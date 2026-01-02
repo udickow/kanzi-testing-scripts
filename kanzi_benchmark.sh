@@ -21,6 +21,12 @@ set -euo pipefail
 # === CONFIGURATION ===
 readonly SCRIPT_NAME="$(basename "$0")"
 readonly NJOBS=${NJOBS:-$(($(nproc) / 2))}
+# Avoid crash on systems where current locale uses another char than "." as
+# decimal separator (e.g. "," is used in da_DK.UTF-8).  The problem is that
+# bc(1) doesn't know about locale (always prints ".") while the bash built-in
+# printf function _only_ accepts floats formatted according to current locale
+# (alternative but slower fix would be to use external /usr/bin/printf instead).
+export LC_NUMERIC=C
 
 # === UTILITY FUNCTIONS ===
 
