@@ -1,5 +1,6 @@
 #!/bin/bash
 # Copyright 2024-2025 Ulrik Dickow <u.dickow@gmail.com>
+# Copyright 2025 Andreas Reichel <andreas@manticore-projects.com>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
