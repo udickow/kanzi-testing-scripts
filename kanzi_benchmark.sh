@@ -243,10 +243,10 @@ main() {
         printf '%s\n' "${test_commands[@]}" | \
         parallel -j"$NJOBS" --line-buffer \
             'start_time=$(date +%s.%N); 
-             compressed_size=$(kanzi -c -j 1 {} -i "$ifile" -o stdout | wc -c);
+             compressed_size=$(kanzi -c -j 1 {=uq=} -i "$ifile" -o stdout | wc -c);
              end_time=$(date +%s.%N);
              duration=$(echo "$end_time - $start_time" | bc -l);
-             printf "%s|%s|%s\n" "$compressed_size" "$duration" "{}"' | \
+             printf "%s|%s|%s\n" "$compressed_size" "$duration" "{=uq=}"' | \
         while IFS='|' read -r size time args; do
             ratio=$(calc_ratio "$original_size" "$size")
             speed=$(calc_speed "$original_size" "$time")
@@ -349,8 +349,9 @@ analyze_results() {
     fi
     
     # Find best compression (lowest ratio)
+    # The "|| true" is because we set pipefail earlier on, so avoid SIGPIPE crash (error 141) that way
     local best_compression
-    best_compression=$(sort -t'|' -k3 -n "$RESULTS_FILE" | head -1)
+    best_compression=$(sort -t'|' -k3 -n "$RESULTS_FILE" | head -1 || true)
     
     # Find most reasonable compression (balance of ratio and speed)
     # We'll use a weighted score: ratio * 2 + (100/speed) to favor compression but consider speed
@@ -368,7 +369,8 @@ analyze_results() {
             }
             print balance_score "|" $0
         }
-    ' "$RESULTS_FILE" | sort -t'|' -k1 -n | head -1 | cut -d'|' -f2-)
+    ' "$RESULTS_FILE" | sort -t'|' -k1 -n | head -1 | cut -d'|' -f2- || true)
+    # The "|| true" is because we set pipefail earlier on, so avoid SIGPIPE crash (error 141) that way
     
     # Parse results
     IFS='|' read -r best_size best_time best_ratio best_speed best_name <<< "$best_compression"
@@ -409,9 +411,9 @@ analyze_results() {
     printf "   • %d algorithms achieved <5%% compression ratio\n" "$good_compression"
     
     if (( $(echo "$best_ratio < 3" | bc -l) )); then
-        printf "   • Excellent compression achieved (<%%.0f%%)\n" 3
+        printf "   • Excellent compression achieved (<%.0f%%)\n" 3
     elif (( $(echo "$best_ratio < 5" | bc -l) )); then
-        printf "   • Very good compression achieved (<%%.0f%%)\n" 5
+        printf "   • Very good compression achieved (<%.0f%%)\n" 5
     fi
     
     if (( $(echo "$bal_speed > 50" | bc -l) )); then
