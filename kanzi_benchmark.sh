@@ -1,5 +1,5 @@
 #!/bin/bash
-# Copyright 2024-2025 Ulrik Dickow <u.dickow@gmail.com>
+# Copyright 2024-2026 Ulrik Dickow <u.dickow@gmail.com>
 # Copyright 2025 Andreas Reichel <andreas@manticore-projects.com>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -17,11 +17,14 @@
 # Purpose: Comprehensive compression benchmarking with timing and ratio analysis
 # Enhanced version with improved readability, timing, and compression metrics
 
-set -euo pipefail
+# '-o pipefail' gives ugly pipes and -e is detrimental to option parsing, drop that:
+#set -euo pipefail
+# Instead only barf on using undefined variables:
+set -u
 
 # === CONFIGURATION ===
 readonly SCRIPT_NAME="$(basename "$0")"
-readonly NJOBS=${NJOBS:-$(($(nproc) / 2))}
+
 # Avoid crash on systems where current locale uses another char than "." as
 # decimal separator (e.g. "," is used in da_DK.UTF-8).  The problem is that
 # bc(1) doesn't know about locale (always prints ".") while the bash built-in
@@ -29,12 +32,111 @@ readonly NJOBS=${NJOBS:-$(($(nproc) / 2))}
 # (alternative but slower fix would be to use external /usr/bin/printf instead).
 export LC_NUMERIC=C
 
+# Set defaults for parameters that may be changed via command line options
+# (for historic reasons we still allow setting NJOBS default via environment).
+NJOBS=${NJOBS:-$(($(nproc) / 2))}
+NPROGS=1
+NTHREADS=$NJOBS
+DEPTH=3
+
 # === UTILITY FUNCTIONS ===
 
 usage() {
-    echo "Usage: $SCRIPT_NAME FILE" >&2
-    echo "Benchmark compression algorithms with timing and ratio analysis" >&2
-    exit 1
+    cat <<EOF >&2
+Usage: $0 [OPTION]... FILE
+Benchmark compression algorithms on given FILE with timing and ratio analysis.
+
+Options:
+
+   -j, --jobs=NJOBS
+        Number of jobs (threads) for each bzip3/kanzi in general.
+        Overrides the NJOBS environment variable.
+        Default half the number of processors reported by nproc(1).
+
+   -p, --programs=NPROGS
+        Number of concurrent invocations of kanzi by GNU parallel.
+        Default 1 to ensure reliable timings.
+
+   -t, --threads=NTHREADS
+        Number of threads (jobs) for each kanzi invoked by GNU parallel.
+        Defaults to --jobs (NJOBS) value, giving fair comparison of
+        timing with the initial non-parallel bzip3 and kanzi tests.
+
+   -d, --depth=DEPTH
+        Maximum number of transforms to combine in the loops over all
+        possible transforms combined with all possible entropy codecs.
+        Use 0 to skip all of those loops and only test special cases.
+        Default depth is 3, the maximum allowed.
+
+   -h, --help
+        Display this help and exit.
+
+Example:
+
+  kanzi_benchmark.sh --jobs=8 -p8 -t 1 --depth 2 bashref.html
+EOF
+}
+
+# Parse command line options as in getopt-example.bash
+# (getopt(1) is part of util-linux, also included in MSYS2 and Git for Windows distributions).
+parse_command_line() {
+    local args
+    args=$(getopt -o 'd:hj:p:t:' --long 'jobs:,programs:,threads:,depth:,help' -n "$SCRIPT_NAME" -- "$@")
+
+    if [ $? -ne 0 ]; then
+        echo "Try \"$SCRIPT_NAME --help\" for more information"
+        exit 1
+    fi
+
+    eval set -- "$args"
+    unset args
+
+    while true; do
+        case "$1" in
+            '-j'|'--jobs')
+                NJOBS="$2"
+                shift 2
+                continue
+                ;;
+            '-p'|'--programs')
+                NPROGS="$2"
+                shift 2
+                continue
+                ;;
+            '-t'|'--threads')
+                NTHREADS="$2"
+                shift 2
+                continue
+                ;;
+            '-d'|'--depth')
+                DEPTH="$2"
+                shift 2
+                continue
+                ;;
+            '-h'|'--help')
+                usage
+                exit 0
+                ;;
+            '--')
+                shift
+                break
+                ;;
+            *)
+                echo 'Internal error!' >&2
+                exit 2
+                ;;
+        esac
+    done
+    #echo "NJOBS=$NJOBS NPROGS=$NPROGS NTHREADS=$NTHREADS DEPTH=$DEPTH"
+    #echo "Remaining args: $@"
+
+    # Now only the name of a single existing file must remain
+    if [[ $# -ne 1 || ! -r "$1" ]]; then
+        usage
+        exit 3
+    fi
+
+    input_file="$1"
 }
 
 log_info() {
@@ -122,24 +224,21 @@ benchmark_compressor() {
 # === MAIN SCRIPT ===
 
 main() {
-    # Validate input
-    if [[ $# -ne 1 || ! -r "$1" ]]; then
-        usage
-    fi
-    
-    local input_file="$1"
-    local original_size
-    
     # Check required commands
-    for cmd in bc stat; do
+    for cmd in bc stat numfmt getopt; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
             log_error "Required command '$cmd' not found"
             exit 1
         fi
     done
     
+    # Parse command line (options and file name), putting results in global variables
+    parse_command_line "$@"
+
+    local original_size
+
     original_size=$(get_file_size "$input_file")
-    export ifile="$input_file"  # For GNU parallel
+    export ifile="$input_file" NJOBS NTHREADS # For GNU parallel
     
     # Create temporary file for results
     readonly RESULTS_FILE=$(mktemp)
@@ -147,7 +246,10 @@ main() {
     
     log_info "Benchmarking compression algorithms"
     log_info "Input file: $input_file ($(format_size "$original_size"))"
-    log_info "Parallel jobs: $NJOBS"
+    log_info "Parallel jobs generally: $NJOBS"
+    log_info "Parallel programs:       $NPROGS"
+    log_info "  Threads for each:      $NTHREADS"
+    log_info "Transform loop depth:    $DEPTH"
     echo
     
     # Header
@@ -245,12 +347,12 @@ main() {
         shift
         local test_commands=("$@")
         
-        log_info "Running $test_type (${#test_commands[@]} tests in parallel)"
+        log_info "Running $test_type (${#test_commands[@]} tests, possibly in parallel)"
         
         printf '%s\n' "${test_commands[@]}" | \
-        parallel -j"$NJOBS" --line-buffer \
+        parallel -j"$NPROGS" --line-buffer \
             'start_time=$(date +%s.%N); 
-             compressed_size=$(kanzi -c -j 1 {=uq=} -i "$ifile" -o stdout | wc -c);
+             compressed_size=$(kanzi -c -j $NTHREADS {=uq=} -i "$ifile" -o stdout | wc -c);
              end_time=$(date +%s.%N);
              duration=$(echo "$end_time - $start_time" | bc -l);
              printf "%s|%s|%s\n" "$compressed_size" "$duration" "{=uq=}"' | \
@@ -286,58 +388,71 @@ main() {
     
     printf "\n%s\n" "# KANZI Parallel Tests - Single Transform + Entropy"
     
-    # Single transform tests
-    local trans_list="NONE PACK BWT BWTS LZ LZX LZP ROLZ ROLZX RLT ZRLT MTFT RANK SRT TEXT EXE MM UTF DNA"
-    local entropy_list="NONE HUFFMAN ANS0 ANS1 RANGE CM FPAQ TPAQ TPAQX"
-    local single_transform_tests=()
-    
-    for t1 in $trans_list; do
-        for e in $entropy_list; do
-            single_transform_tests+=("-x64 -b 64m -t $t1 -e $e")
+    # === DEEPLY PARALLEL KANZI TESTS OVER ALL POSSIBLE TRANSFORMATIONS AND ENTROPY CODECS ===
+    run_multi_level_transform_loops() {
+        local depth="$1"
+
+        [ "$depth" -le 0 ] && return
+
+        # Single transform tests
+        local trans_list="NONE PACK BWT BWTS LZ LZX LZP ROLZ ROLZX RLT ZRLT MTFT RANK SRT TEXT EXE MM UTF DNA"
+        local entropy_list="NONE HUFFMAN ANS0 ANS1 RANGE CM FPAQ TPAQ TPAQX"
+        local single_transform_tests=()
+
+        for t1 in $trans_list; do
+            for e in $entropy_list; do
+                single_transform_tests+=("-x64 -b 64m -t $t1 -e $e")
+            done
         done
-    done
-    
-    run_parallel_kanzi_tests "Single transform combinations" "${single_transform_tests[@]}"
-    
-    printf "\n%s\n" "# KANZI Parallel Tests - Two Transform Combinations"
-    
-    # Two transform tests (optimized list)
-    local opt_trans_list="TEXT RLT PACK ZRLT BWTS BWT LZP MTFT SRT LZ LZX ROLZ ROLZX RANK EXE MM"
-    local two_transform_tests=()
-    
-    for t1 in $opt_trans_list; do
-        for t2 in $opt_trans_list; do
-            if [[ "$t1" != "$t2" ]]; then
-                for e in $entropy_list; do
-                    two_transform_tests+=("-x64 -b 64m -t $t1+$t2 -e $e")
-                done
-            fi
+
+        run_parallel_kanzi_tests "Single transform combinations" "${single_transform_tests[@]}"
+
+        [ "$depth" -le 1 ] && return
+
+        printf "\n%s\n" "# KANZI Parallel Tests - Two Transform Combinations"
+
+        # Two transform tests (optimized list)
+        local opt_trans_list="TEXT RLT PACK ZRLT BWTS BWT LZP MTFT SRT LZ LZX ROLZ ROLZX RANK EXE MM"
+        local two_transform_tests=()
+
+        for t1 in $opt_trans_list; do
+            for t2 in $opt_trans_list; do
+                if [[ "$t1" != "$t2" ]]; then
+                    for e in $entropy_list; do
+                        two_transform_tests+=("-x64 -b 64m -t $t1+$t2 -e $e")
+                    done
+                fi
+            done
         done
-    done
-    
-    run_parallel_kanzi_tests "Two transform combinations" "${two_transform_tests[@]}"
-    
-    printf "\n%s\n" "# KANZI Parallel Tests - Three Transform Combinations"
-    
-    # Three transform tests
-    local three_transform_tests=()
-    
-    for t1 in $opt_trans_list; do
-        for t2 in $opt_trans_list; do
-            if [[ "$t1" != "$t2" ]]; then
-                for t3 in $opt_trans_list; do
-                    if [[ "$t2" != "$t3" ]]; then
-                        for e in $entropy_list; do
-                            three_transform_tests+=("-x64 -b 64m -t $t1+$t2+$t3 -e $e")
-                        done
-                    fi
-                done
-            fi
+
+        run_parallel_kanzi_tests "Two transform combinations" "${two_transform_tests[@]}"
+
+        [ "$depth" -le 2 ] && return
+
+        printf "\n%s\n" "# KANZI Parallel Tests - Three Transform Combinations"
+
+        # Three transform tests
+        local three_transform_tests=()
+
+        for t1 in $opt_trans_list; do
+            for t2 in $opt_trans_list; do
+                if [[ "$t1" != "$t2" ]]; then
+                    for t3 in $opt_trans_list; do
+                        if [[ "$t2" != "$t3" ]]; then
+                            for e in $entropy_list; do
+                                three_transform_tests+=("-x64 -b 64m -t $t1+$t2+$t3 -e $e")
+                            done
+                        fi
+                    done
+                fi
+            done
         done
-    done
-    
-    run_parallel_kanzi_tests "Three transform combinations" "${three_transform_tests[@]}"
-    
+
+        run_parallel_kanzi_tests "Three transform combinations" "${three_transform_tests[@]}"
+    }
+
+    run_multi_level_transform_loops "$DEPTH"
+
     # === FINAL ANALYSIS ===
     analyze_results "$original_size"
 }
@@ -356,9 +471,8 @@ analyze_results() {
     fi
     
     # Find best compression (lowest ratio)
-    # The "|| true" is because we set pipefail earlier on, so avoid SIGPIPE crash (error 141) that way
     local best_compression
-    best_compression=$(sort -t'|' -k3 -n "$RESULTS_FILE" | head -1 || true)
+    best_compression=$(sort -t'|' -k3 -n "$RESULTS_FILE" | head -1)
     
     # Find most reasonable compression (balance of ratio and speed)
     # We'll use a weighted score: ratio * 2 + (100/speed) to favor compression but consider speed
@@ -376,8 +490,7 @@ analyze_results() {
             }
             print balance_score "|" $0
         }
-    ' "$RESULTS_FILE" | sort -t'|' -k1 -n | head -1 | cut -d'|' -f2- || true)
-    # The "|| true" is because we set pipefail earlier on, so avoid SIGPIPE crash (error 141) that way
+    ' "$RESULTS_FILE" | sort -t'|' -k1 -n | head -1 | cut -d'|' -f2-)
     
     # Parse results
     IFS='|' read -r best_size best_time best_ratio best_speed best_name <<< "$best_compression"
