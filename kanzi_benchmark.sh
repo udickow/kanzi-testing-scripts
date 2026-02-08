@@ -386,13 +386,13 @@ main() {
     
     run_parallel_kanzi_tests "4-transform TEXT combinations" "${four_transform_tests[@]}"
     
-    printf "\n%s\n" "# KANZI Parallel Tests - Single Transform + Entropy"
-    
     # === DEEPLY PARALLEL KANZI TESTS OVER ALL POSSIBLE TRANSFORMATIONS AND ENTROPY CODECS ===
     run_multi_level_transform_loops() {
         local depth="$1"
 
         [ "$depth" -le 0 ] && return
+
+        printf "\n%s\n" "# KANZI Parallel Tests - Single Transform + Entropy"
 
         # Single transform tests
         local trans_list="NONE PACK BWT BWTS LZ LZX LZP ROLZ ROLZX RLT ZRLT MTFT RANK SRT TEXT EXE MM UTF DNA"
