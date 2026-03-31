@@ -7,6 +7,7 @@ This repository currently contains these bash scripts for testing and verifying 
 * [recompress-old-kanzi-files.sh](#recompress-old-kanzi-filessh)
 * [time-size-chk-kanzi-algos.sh](#time-size-chk-kanzi-algossh)
 * [size-kanzi-algos-etc.sh](#size-kanzi-algos-etcsh)
+* [pareto-convex.pl](#pareto-convexpl)
 * [kanzi_benchmark.sh](#kanzi_benchmarksh)
 
 ## checksum-kanzi-d-filelist.sh
@@ -298,6 +299,62 @@ approximately a factor 10 faster than zpaq with these options.
 
 More test results and more detailed descriptions of the test files can be found in the [wiki](https://github.com/udickow/kanzi-testing-scripts/wiki).
 
+## pareto-convex.pl
+
+This is a Perl script that reads standard input or one or more numerically sorted text files given on the command line.
+It prints out only a subset of the lines that begin with two integer or decimal notation numbers separated by whitespace.
+The subset is the lines where the two numbers (x,y) are part of the convex hull of the lower
+[Pareto front](https://en.wikipedia.org/wiki/Pareto_front).
+Its main purpose is to be used by the
+[kanzi_benchmark.sh](#kanzi_benchmarksh) script, expected to be in the PATH when running that.
+But it may also be used stand-alone like this:
+```
+$ printf "2.0 5.0 much better y\n1.5 9.0 not on convex\n5.0 4.0 best y\n5.5 4.5 worse y\n0.5 12.0 best x but worse y\n0.5 10.0 best x (best y for that)\n"|LC_NUMERIC=C sort -sn
+0.5 12.0 best x but worse y
+0.5 10.0 best x (best y for that)
+1.5 9.0 not on convex
+2.0 5.0 much better y
+5.0 4.0 best y
+5.5 4.5 worse y
+
+$ printf "2.0 5.0 much better y\n1.5 9.0 not on convex\n5.0 4.0 best y\n5.5 4.5 worse y\n0.5 12.0 best x but worse y\n0.5 10.0 best x (best y for that)\n"|LC_NUMERIC=C sort -sn|cut -d\  -f1-2|feedgnuplot --domain --points --terminal 'dumb 80,30' --exit --xmin 0 --ymin 3 --ymax 13 --unset grid --line
+
+     +----------------------------------------------------------------------+
+     |           +           +           +          +           +           |
+     |                                                                      |
+  12 |-+   A                                                              +-|
+     |     *                                                                |
+     |     *                                                                |
+     |     *                                                                |
+     |     *                                                                |
+  10 |-+   A**                                                            +-|
+     |        ******                                                        |
+     |              ***A                                                    |
+     |                  *                                                   |
+     |                  *                                                   |
+   8 |-+                 *                                                +-|
+     |                   *                                                  |
+     |                    *                                                 |
+     |                    *                                                 |
+     |                     *                                                |
+   6 |-+                   *                                              +-|
+     |                      *                                               |
+     |                      *                                               |
+     |                       A********                                      |
+     |                                ******************           ***A     |
+   4 |-+                                                ********A**       +-|
+     |                                                                      |
+     |           +           +           +          +           +           |
+     +----------------------------------------------------------------------+
+     0           1           2           3          4           5           6
+
+$ printf "2.0 5.0 much better y\n1.5 9.0 not on convex\n5.0 4.0 best y\n5.5 4.5 worse y\n0.5 12.0 best x but worse y\n0.5 10.0 best x (best y for that)\n"|LC_NUMERIC=C sort -sn|./pareto-convex.pl
+0.5 10.0 best x (best y for that)
+2.0 5.0 much better y
+5.0 4.0 best y
+```
+Note that point (1.5,9.0) is part of the Pareto front but not the convex part of it.
+
 ## kanzi_benchmark.sh
 
 This is a refactored version of the [size-kanzi-algos-etc.sh](#size-kanzi-algos-etcsh) script,
@@ -309,7 +366,6 @@ The main changes are:
 * Use 64m blocksize instead of 256m for the specialized transform chains like `EXE+TEXT+RLT+UTF+PACK`
 * Beautify output with e.g. headings, rounding (up) sizes to [human readable (iec) format](https://www.man7.org/linux/man-pages/man1/numfmt.1.html#EXAMPLES)
 * Measure approximate wall-clock time spent by each compression test, not only the compressed size
-    - Note that these timings may be *very* unreliable (sometimes several times too high) for the parallel tests
 * Sort each set of parallel kanzi test results by compression percentage rounded to 2 decimals (so only an approximate sort)
 * Add final analysis and recommendation section
 
@@ -319,523 +375,287 @@ The main changes are:
 * [kanzi](https://github.com/flanglet/kanzi-cpp) (Go or Java version may work too if you name it "kanzi")
 * [bzip3](https://github.com/kspalaiologos/bzip3)
 
-### Example 1 -- run on the Fedora 30 boot.log file with 8 parallel jobs
+### Usage
 
-We test on the same
-[private 24.1 MiB highly redundant Fedora 30 Linux /var/log/boot.log test file](https://github.com/udickow/kanzi-testing-scripts/wiki/Test-file-descriptions#boot30)
-as in the [time-size-chk-kanzi-algos.sh](#time-size-chk-kanzi-algossh) section (the benchmark script rounds up the 24.1 MiB to `25MB`).
-In the first run we use the default number of threads and jobs for the given hardware, 8 in this case.
-Note that this gives much lower speeds for many of the the parallelly tested kanzi compressions than in the later, more fairly timed,
-[NJOBS=1 run](#Example-2----single-threaded-non-parallel-run-on-the-Fedora-30-bootlog-file).
 ```
-$ (date;\time kanzi_benchmark.sh boot-HOSTNAME-fc30big.log;date)> ...boot_HOSTNAME_fc30big...out 2>&1
+$ ./kanzi_benchmark.sh --help
+Usage: ./kanzi_benchmark.sh [OPTION]... FILE
+Benchmark compression algorithms on given FILE with timing and ratio analysis.
 
-$ grep -E -B10 -A25 '#|==' ...boot_HOSTNAME_fc30big...out
-fre  2 jan 17:53:10 CET 2026
+Options:
+
+   -j, --jobs=NJOBS
+        Number of jobs (threads) for each bzip3/kanzi in general.
+        Overrides the NJOBS environment variable.
+        Default half the number of processors reported by nproc(1).
+
+   -p, --programs=NPROGS
+        Number of concurrent invocations of kanzi by GNU parallel.
+        Default 1 to ensure reliable timings.
+
+   -t, --threads=NTHREADS
+        Number of threads (jobs) for each kanzi invoked by GNU parallel.
+        Defaults to --jobs (NJOBS) value, giving fair comparison of
+        timing with the initial non-parallel bzip3 and kanzi tests.
+
+   -d, --depth=DEPTH
+        Maximum number of transforms to combine in the loops over all
+        possible transforms combined with all possible entropy codecs.
+        Use 0 to skip all of those loops and only test special cases.
+        Default depth is 3, the maximum allowed.
+
+   -h, --help
+        Display this help and exit.
+
+Example:
+
+  kanzi_benchmark.sh --jobs=8 -p8 -t 1 --depth 2 bashref.html
+```
+Options are parsed with [getopt(1)](https://manpages.ubuntu.com/manpages/trusty/en/man1/getopt.1.html)
+and you thus have a great degree of freedom in using/omitting spaces or equal signs when giving options.
+
+### Example -- run on the lzbench Silesia tar file with depth reduced to 2
+
+Testing here on the [lzbench version](https://github.com/inikep/lzbench?tab=readme-ov-file#benchmarks) (211947520 bytes)
+of [silesia.tar](https://github.com/DataCompression/corpus-collection/tree/main/Silesia-Corpus).
+Note that this is a slightly different file than used in the
+[wiki](https://github.com/udickow/kanzi-testing-scripts/wiki/Test-file-descriptions#silesia)
+and that both are different from the 211957760 byte file currently used in the
+[kanzi-cpp README](https://github.com/flanglet/kanzi-cpp?tab=readme-ov-file#silesiatar).
+
+To be able to complete the test in a few hours instead of days, we reduce the depth from default 3 to 2.
+We keep other options at default, set Linux to the Performance power profile and run it while not using
+the laptop for other purposes.  This way we should get the most reliable timings, although still less
+reproducible than if using lzbench.
+The hardware is AMD Ryzen 9 5900HX (8 cores, 16 threads), overclocked above 4.7 GHz (max 4.89 GHz).
+Software: Fedora 42 Linux w/ kernel 6.19.8.
+
+The output below is slightly edited for this README but the timings are unchanged.
+```
+$ ll silesia.tar
+-rw-r--r--. 1 ukd ukd 211947520 30 mar 22:31 silesia.tar
+
+$ llw kanzi
+lrwxrwxrwx. 1 root root 54 15 mar 13:53 /usr/local/bin/kanzi -> kanzi-2.5.1/kanzi-2.5.1-clang2018-znver3-nopic-lto-pgo
+
+$ (date;\time ~/git/kanzi-testing-scripts/kanzi_benchmark.sh --depth 2 silesia.tar;date)>& ...silesia_lzbench_tar...out
+
+$ grep -E -B11 -A30 '#|==' ...silesia_lzbench_tar...out
+man 30 mar 22:34:15 CEST 2026
 [INFO] Benchmarking compression algorithms
-[INFO] Input file: boot-HOSTNAME-fc30big.log (25MB)
-[INFO] Parallel jobs: 8
+[INFO] Input file: silesia.tar (203MB)
+[INFO] Parallel jobs generally: 8
+[INFO] Parallel programs:       1
+[INFO]   Threads for each:      8
+[INFO] Transform loop depth:    2
 
   COMPRESSED       TIME     RATIO      SPEED ALGORITHM
 ------------ ---------- --------- ---------- ----------
 
 # BZIP3 Variants
-       231KB     0.791s     0.93%      30.47 bzip3
-       209KB      1.27s     0.84%      19.01 bzip3 -b32
-       209KB      1.69s     0.84%      14.24 bzip3 -b64
-       209KB      2.51s     0.84%       9.58 bzip3 -b128
-       209KB      4.29s     0.84%       5.61 bzip3 -b256
+        46MB      4.69s    22.28%      43.13 bzip3
+        46MB      4.93s    22.34%      41.01 bzip3 -b32
+        46MB      7.64s    22.30%      26.46 bzip3 -b64
+        46MB     11.93s    22.62%      16.94 bzip3 -b128
+        47MB     19.64s    23.00%      10.29 bzip3 -b256
 
 # KANZI Level Presets (Default Block Size)
-       2.6MB     0.025s    10.56%     954.58 kanzi -l1
-       1.9MB     0.026s     7.57%     939.06 kanzi -l2
-       1.4MB     0.047s     5.74%     511.94 kanzi -l3
-       424KB     0.048s     1.71%     501.21 kanzi -l4
-       191KB     0.189s     0.77%     127.61 kanzi -l5
-       139KB     0.370s     0.56%      65.07 kanzi -l6
-       221KB     0.347s     0.89%      69.39 kanzi -l7
-       399KB      2.12s     1.61%      11.37 kanzi -l8
-       368KB      3.86s     1.49%       6.23 kanzi -l9
+        76MB     0.283s    37.43%     714.87 kanzi -l1
+        66MB     0.173s    32.38%    1167.73 kanzi -l2
+        62MB     0.409s    30.39%     493.62 kanzi -l3
+        58MB     0.622s    28.53%     325.06 kanzi -l4
+        52MB      1.90s    25.48%     106.65 kanzi -l5
+        48MB      2.29s    23.36%      88.39 kanzi -l6
+        46MB      3.55s    22.32%      56.86 kanzi -l7
+        42MB     12.64s    20.40%      15.99 kanzi -l8
+        40MB     19.49s    19.72%      10.36 kanzi -l9
 
 # KANZI Level Presets (64MB Block Size)
-       2.6MB     0.055s    10.45%     441.58 kanzi -b64m -l1
-       1.8MB     0.061s     7.39%     394.63 kanzi -b64m -l2
-       1.4MB     0.129s     5.74%     186.86 kanzi -b64m -l3
-       359KB     0.130s     1.45%     184.73 kanzi -b64m -l4
-       124KB     0.970s     0.50%      24.82 kanzi -b64m -l5
-       111KB      1.11s     0.44%      21.63 kanzi -b64m -l6
-       197KB     0.555s     0.79%      43.38 kanzi -b64m -l7
-       394KB      3.20s     1.59%       7.53 kanzi -b64m -l8
-       368KB      4.15s     1.49%       5.80 kanzi -b64m -l9
+        75MB     0.504s    36.84%     401.08 kanzi -b64m -l1
+        66MB     0.439s    32.19%     459.93 kanzi -b64m -l2
+        62MB     0.852s    30.36%     237.35 kanzi -b64m -l3
+        60MB      1.21s    29.26%     166.73 kanzi -b64m -l4
+        51MB      4.99s    25.03%      40.47 kanzi -b64m -l5
+        47MB      5.24s    23.16%      38.58 kanzi -b64m -l6
+        46MB      6.10s    22.29%      33.14 kanzi -b64m -l7
+        41MB     19.92s    20.19%      10.14 kanzi -b64m -l8
+        40MB     30.28s    19.63%       6.67 kanzi -b64m -l9
 
 # KANZI Large Block Sizes (Level 9)
-       468KB      1.65s     1.89%      14.60 kanzi -b1m -l9
-       399KB      1.34s     1.61%      17.98 kanzi -b4m -l9
-       386KB      1.66s     1.56%      14.50 kanzi -b8m -l9
-       376KB      2.71s     1.52%       8.88 kanzi -b16m -l9
-       368KB      3.94s     1.49%       6.11 kanzi -b32m -l9
-       368KB      4.15s     1.49%       5.81 kanzi -b64m -l9
-       368KB      4.24s     1.49%       5.68 kanzi -b96m -l9
-       368KB      4.26s     1.49%       5.65 kanzi -b128m -l9
-       368KB      4.32s     1.49%       5.58 kanzi -b256m -l9
+        44MB     20.36s    21.40%       9.92 kanzi -b1m -l9
+        42MB     18.62s    20.33%      10.85 kanzi -b4m -l9
+        41MB     18.07s    19.98%      11.18 kanzi -b8m -l9
+        40MB     21.69s    19.73%       9.31 kanzi -b16m -l9
+        40MB     19.65s    19.72%      10.28 kanzi -b32m -l9
+        40MB     31.23s    19.63%       6.47 kanzi -b64m -l9
+        40MB     40.61s    19.64%       4.97 kanzi -b96m -l9
+        41MB     47.03s    19.83%       4.29 kanzi -b128m -l9
+        40MB      1m10s    19.75%       2.87 kanzi -b256m -l9
 
 # KANZI Specialized Transform Chains (64MB blocks)
-       399KB      5.24s     1.61%       4.60 kanzi -tRLT -eTpaqx
-       261KB      3.78s     1.05%       6.37 kanzi -tPACK -eTpaqx
-       251KB      4.85s     1.01%       4.97 kanzi -tPACK+ZRLT+PACK -eTpaqx
-       260KB      3.72s     1.05%       6.47 kanzi -tPACK+RLT -eTpaqx
-       249KB      4.51s     1.00%       5.34 kanzi -tRLT+PACK -eTpaqx
-       233KB      3.61s     0.94%       6.67 kanzi -tRLT+TEXT+PACK -eTpaqx
-       243KB      3.04s     0.98%       7.93 kanzi -tRLT+PACK+LZP -eTpaqx
-       243KB      3.21s     0.98%       7.50 kanzi -tRLT+PACK+LZP+RLT -eTpaqx
-       235KB      3.64s     0.95%       6.61 kanzi -tTEXT+ZRLT+PACK -eTpaqx
-       332KB      3.21s     1.34%       7.51 kanzi -tRLT+LZP+PACK+RLT -eTpaqx
-       235KB      2.52s     0.94%       9.54 kanzi -tTEXT+ZRLT+PACK+LZP -eTpaqx
-       235KB      3.52s     0.94%       6.84 kanzi -tTEXT+RLT+PACK -eTpaqx
-       321KB      2.99s     1.29%       8.06 kanzi -tTEXT+RLT+LZP -eTpaqx
-       235KB      2.57s     0.94%       9.37 kanzi -tTEXT+RLT+PACK+LZP -eTpaqx
-       321KB      3.04s     1.29%       7.93 kanzi -tTEXT+RLT+LZP+RLT -eTpaqx
-       235KB      2.58s     0.94%       9.32 kanzi -tTEXT+RLT+PACK+LZP+RLT -eTpaqx
-       321KB      3.01s     1.29%       7.99 kanzi -tTEXT+RLT+LZP+PACK -eTpaqx
-       235KB      2.57s     0.94%       9.35 kanzi -tTEXT+RLT+PACK+RLT+LZP -eTpaqx
-       321KB      3.14s     1.29%       7.67 kanzi -tTEXT+RLT+LZP+PACK+RLT -eTpaqx
-       234KB      3.67s     0.94%       6.56 kanzi -tTEXT+PACK+RLT -eTpaqx
-       235KB      3.62s     0.94%       6.65 kanzi -tEXE+TEXT+RLT+UTF+PACK -eTpaqx
-       368KB      4.13s     1.49%       5.83 kanzi -tEXE+TEXT+RLT+UTF+DNA -eTpaqx
-       368KB      4.09s     1.49%       5.89 kanzi -tEXE+TEXT+RLT -eTpaqx
-       369KB      4.17s     1.49%       5.77 kanzi -tEXE+TEXT -eTpaqx
-       107KB      1.97s     0.43%      12.23 kanzi -tTEXT+BWTS+SRT+ZRLT -eTpaqx
-       107KB      2.19s     0.43%      10.99 kanzi -tBWTS+SRT+ZRLT -eTpaqx
-       108KB      2.03s     0.43%      11.87 kanzi -tTEXT+BWTS+MTFT+RLT -eTpaqx
-       109KB      2.22s     0.43%      10.84 kanzi -tBWTS+MTFT+RLT -eTpaqx
-       109KB      1.76s     0.43%      13.69 kanzi -tTEXT+BWT+MTFT+RLT -eTpaqx
-       115KB      5.45s     0.46%       4.41 kanzi -tBWT+MTFT+RLT -eTpaqx
+        40MB     30.92s    19.63%       6.53 kanzi -tRLT -eTpaqx
+        40MB     29.96s    19.68%       6.74 kanzi -tPACK -eTpaqx
+        40MB     29.93s    19.70%       6.75 kanzi -tPACK+ZRLT+PACK -eTpaqx
+        40MB     30.52s    19.63%       6.62 kanzi -tPACK+RLT -eTpaqx
+        40MB     30.67s    19.63%       6.58 kanzi -tRLT+PACK -eTpaqx
+        40MB     30.19s    19.63%       6.69 kanzi -tRLT+TEXT+PACK -eTpaqx
+        40MB     29.61s    19.68%       6.82 kanzi -tRLT+PACK+LZP -eTpaqx
+        40MB     29.60s    19.68%       6.82 kanzi -tRLT+PACK+LZP+RLT -eTpaqx
+        40MB     29.74s    19.70%       6.79 kanzi -tTEXT+ZRLT+PACK -eTpaqx
+        40MB     29.09s    19.68%       6.94 kanzi -tRLT+LZP+PACK+RLT -eTpaqx
+        40MB     29.41s    19.75%       6.87 kanzi -tTEXT+ZRLT+PACK+LZP -eTpaqx
+        40MB     30.47s    19.63%       6.63 kanzi -tTEXT+RLT+PACK -eTpaqx
+        40MB     29.14s    19.68%       6.93 kanzi -tTEXT+RLT+LZP -eTpaqx
+        40MB     29.21s    19.68%       6.91 kanzi -tTEXT+RLT+PACK+LZP -eTpaqx
+        40MB     29.57s    19.68%       6.83 kanzi -tTEXT+RLT+LZP+RLT -eTpaqx
+        40MB     29.91s    19.68%       6.75 kanzi -tTEXT+RLT+PACK+LZP+RLT -eTpaqx
+        40MB     29.99s    19.68%       6.73 kanzi -tTEXT+RLT+LZP+PACK -eTpaqx
+        40MB     29.72s    19.68%       6.80 kanzi -tTEXT+RLT+PACK+RLT+LZP -eTpaqx
+        40MB     29.30s    19.68%       6.89 kanzi -tTEXT+RLT+LZP+PACK+RLT -eTpaqx
+        40MB     30.59s    19.63%       6.60 kanzi -tTEXT+PACK+RLT -eTpaqx
+        40MB     30.49s    19.63%       6.62 kanzi -tEXE+TEXT+RLT+UTF+PACK -eTpaqx
+        40MB     30.97s    19.63%       6.52 kanzi -tEXE+TEXT+RLT+UTF+DNA -eTpaqx
+        40MB     30.52s    19.63%       6.62 kanzi -tEXE+TEXT+RLT -eTpaqx
+        40MB     31.26s    19.68%       6.46 kanzi -tEXE+TEXT -eTpaqx
+        47MB     25.08s    22.96%       8.06 kanzi -tTEXT+BWTS+SRT+ZRLT -eTpaqx
+        47MB     24.98s    22.96%       8.09 kanzi -tBWTS+SRT+ZRLT -eTpaqx
+        49MB     26.60s    23.85%       7.59 kanzi -tTEXT+BWTS+MTFT+RLT -eTpaqx
+        49MB     25.64s    23.85%       7.88 kanzi -tBWTS+MTFT+RLT -eTpaqx
+        49MB     24.49s    23.85%       8.25 kanzi -tTEXT+BWT+MTFT+RLT -eTpaqx
+        49MB     24.76s    23.85%       8.16 kanzi -tBWT+MTFT+RLT -eTpaqx
 
 # KANZI Parallel Tests - 4-Transform BWT/BWTS Combinations
-[INFO] Running 4-transform TEXT combinations (24 tests in parallel)
-       107KB      3.14s     0.43%       7.68 kanzi -x64 -b 64m -t TEXT+BWT+SRT+ZRLT -e TPAQ
-       107KB      3.66s     0.43%       6.58 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+ZRLT -e TPAQX
-       107KB      4.05s     0.43%       5.95 kanzi -x64 -b 64m -t TEXT+BWT+SRT+ZRLT -e TPAQX
-       107KB      4.06s     0.43%       5.92 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+ZRLT -e TPAQ
-       107KB      5.12s     0.43%       4.70 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+RLT -e TPAQX
-       108KB      2.72s     0.43%       8.85 kanzi -x64 -b 64m -t TEXT+BWT+SRT+ZRLT -e CM
-       108KB      3.35s     0.43%       7.19 kanzi -x64 -b 64m -t TEXT+BWT+SRT+RLT -e TPAQ
-       108KB      3.36s     0.43%       7.17 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+ZRLT -e TPAQ
-       108KB      3.90s     0.43%       6.17 kanzi -x64 -b 64m -t TEXT+BWT+SRT+RLT -e TPAQX
-       108KB      4.04s     0.43%       5.96 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+ZRLT -e TPAQX
-       108KB      4.05s     0.43%       5.95 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+ZRLT -e CM
-       108KB      4.66s     0.43%       5.17 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+ZRLT -e TPAQ
-       108KB      4.68s     0.43%       5.14 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+RLT -e TPAQ
-       108KB      5.41s     0.43%       4.45 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+RLT -e TPAQX
-       108KB      5.47s     0.43%       4.40 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+ZRLT -e TPAQX
-       109KB      4.09s     0.43%       5.88 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+RLT -e TPAQX
-       109KB      4.51s     0.43%       5.34 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+RLT -e TPAQ
-       109KB      3.47s     0.44%       6.94 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+RLT -e TPAQ
-       110KB      3.00s     0.44%       8.02 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+ZRLT -e CM
-       110KB      4.24s     0.44%       5.67 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+ZRLT -e CM
-       122KB      3.00s     0.49%       8.02 kanzi -x64 -b 64m -t TEXT+BWT+SRT+RLT -e CM
-       122KB      4.39s     0.49%       5.48 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+RLT -e CM
-       123KB      2.89s     0.49%       8.34 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+RLT -e CM
-       123KB      4.04s     0.49%       5.95 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+RLT -e CM
+[INFO] Running 4-transform TEXT combinations (24 tests, possibly in parallel)
+        47MB     17.56s    22.77%      11.51 kanzi -x64 -b 64m -t TEXT+BWT+SRT+ZRLT -e TPAQ
+        47MB     19.21s    22.77%      10.52 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+ZRLT -e TPAQ
+        47MB      6.45s    22.82%      31.33 kanzi -x64 -b 64m -t TEXT+BWT+SRT+ZRLT -e CM
+        47MB      7.96s    22.82%      25.39 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+ZRLT -e CM
+        47MB     17.79s    22.87%      11.35 kanzi -x64 -b 64m -t TEXT+BWT+SRT+RLT -e TPAQ
+        47MB     19.44s    22.87%      10.39 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+RLT -e TPAQ
+        47MB     22.53s    22.96%       8.97 kanzi -x64 -b 64m -t TEXT+BWT+SRT+ZRLT -e TPAQX
+        47MB     24.60s    22.96%       8.21 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+ZRLT -e TPAQX
+        47MB     22.88s    23.02%       8.83 kanzi -x64 -b 64m -t TEXT+BWT+SRT+RLT -e TPAQX
+        47MB     25.49s    23.02%       7.92 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+RLT -e TPAQX
+        48MB      6.57s    23.55%      30.75 kanzi -x64 -b 64m -t TEXT+BWT+SRT+RLT -e CM
+        48MB      7.83s    23.55%      25.80 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+RLT -e CM
+        48MB     18.53s    23.57%      10.90 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+ZRLT -e TPAQ
+        48MB     20.04s    23.57%      10.08 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+ZRLT -e TPAQ
+        49MB     18.79s    23.75%      10.75 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+RLT -e TPAQ
+        49MB     20.31s    23.75%       9.94 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+RLT -e TPAQ
+        49MB     24.04s    23.76%       8.40 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+ZRLT -e TPAQX
+        49MB     25.89s    23.76%       7.80 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+ZRLT -e TPAQX
+        49MB      7.04s    23.77%      28.71 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+ZRLT -e CM
+        49MB      8.50s    23.77%      23.78 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+ZRLT -e CM
+        49MB     24.56s    23.85%       8.22 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+RLT -e TPAQX
+        49MB     26.63s    23.85%       7.58 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+RLT -e TPAQX
+        50MB      7.09s    24.44%      28.51 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+RLT -e CM
+        50MB      8.44s    24.44%      23.95 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+RLT -e CM
 
 # KANZI Parallel Tests - Single Transform + Entropy
-[INFO] Running Single transform combinations (171 tests in parallel)
-       115KB      6.71s     0.46%       3.58 kanzi -x64 -b 64m -t BWT -e TPAQX
-       115KB      8.20s     0.46%       2.93 kanzi -x64 -b 64m -t BWTS -e TPAQX
-       116KB      5.94s     0.46%       4.05 kanzi -x64 -b 64m -t BWT -e TPAQ
-       116KB      8.24s     0.46%       2.92 kanzi -x64 -b 64m -t BWTS -e TPAQ
-       122KB      3.68s     0.49%       6.54 kanzi -x64 -b 64m -t BWT -e CM
-       122KB      5.68s     0.49%       4.23 kanzi -x64 -b 64m -t BWTS -e CM
-       260KB      2.52s     1.05%       9.55 kanzi -x64 -b 64m -t BWT -e ANS1
-       260KB      3.89s     1.05%       6.19 kanzi -x64 -b 64m -t BWTS -e ANS1
-       261KB      2.66s     1.05%       9.06 kanzi -x64 -b 64m -t BWT -e FPAQ
-       261KB      4.92s     1.05%       4.89 kanzi -x64 -b 64m -t BWTS -e FPAQ
-       261KB     11.25s     1.05%       2.14 kanzi -x64 -b 64m -t PACK -e TPAQX
-       310KB      6.13s     1.25%       3.93 kanzi -x64 -b 64m -t PACK -e TPAQ
-       333KB      4.48s     1.34%       5.38 kanzi -x64 -b 64m -t LZP -e TPAQX
-       358KB      3.07s     1.44%       7.85 kanzi -x64 -b 64m -t LZP -e TPAQ
-       369KB      5.91s     1.49%       4.07 kanzi -x64 -b 64m -t TEXT -e TPAQX
-       394KB      4.13s     1.59%       5.83 kanzi -x64 -b 64m -t TEXT -e TPAQ
-       399KB      8.04s     1.61%       2.99 kanzi -x64 -b 64m -t RLT -e TPAQX
-       400KB     0.478s     1.61%      50.41 kanzi -x64 -b 64m -t ROLZ -e TPAQ
-       400KB      1.17s     1.62%      20.67 kanzi -x64 -b 64m -t ROLZ -e TPAQX
-       401KB     0.073s     1.62%     328.32 kanzi -x64 -b 64m -t ROLZ -e HUFFMAN
-       401KB     0.080s     1.62%     302.67 kanzi -x64 -b 64m -t ROLZ -e NONE
-       401KB     0.103s     1.62%     233.15 kanzi -x64 -b 64m -t ROLZ -e CM
-       402KB      6.83s     1.62%       3.52 kanzi -x64 -b 64m -t DNA -e TPAQX
-       402KB      7.16s     1.62%       3.36 kanzi -x64 -b 64m -t ZRLT -e TPAQX
+[INFO] Running Single transform combinations (171 tests, possibly in parallel)
+        40MB     30.21s    19.63%       6.69 kanzi -x64 -b 64m -t RLT -e TPAQX
+        40MB     30.48s    19.68%       6.63 kanzi -x64 -b 64m -t NONE -e TPAQX
+        40MB     30.84s    19.68%       6.55 kanzi -x64 -b 64m -t EXE -e TPAQX
+        40MB     30.93s    19.68%       6.53 kanzi -x64 -b 64m -t UTF -e TPAQX
+        40MB     31.16s    19.68%       6.48 kanzi -x64 -b 64m -t TEXT -e TPAQX
+        40MB     31.40s    19.68%       6.43 kanzi -x64 -b 64m -t DNA -e TPAQX
+        40MB     31.55s    19.68%       6.40 kanzi -x64 -b 64m -t PACK -e TPAQX
+        40MB     30.14s    19.70%       6.70 kanzi -x64 -b 64m -t ZRLT -e TPAQX
+        40MB     30.00s    19.73%       6.73 kanzi -x64 -b 64m -t LZP -e TPAQX
+        41MB     31.58s    19.80%       6.40 kanzi -x64 -b 64m -t MM -e TPAQX
+        41MB     19.92s    20.19%      10.14 kanzi -x64 -b 64m -t RLT -e TPAQ
+        41MB     20.20s    20.23%      10.00 kanzi -x64 -b 64m -t ZRLT -e TPAQ
+        41MB     19.68s    20.25%      10.26 kanzi -x64 -b 64m -t NONE -e TPAQ
+        41MB     20.12s    20.25%      10.04 kanzi -x64 -b 64m -t EXE -e TPAQ
+        41MB     20.14s    20.25%      10.03 kanzi -x64 -b 64m -t DNA -e TPAQ
+        41MB     20.17s    20.25%      10.02 kanzi -x64 -b 64m -t TEXT -e TPAQ
+        41MB     20.23s    20.25%       9.99 kanzi -x64 -b 64m -t UTF -e TPAQ
+        41MB     20.38s    20.25%       9.91 kanzi -x64 -b 64m -t PACK -e TPAQ
+        42MB     19.59s    20.32%      10.31 kanzi -x64 -b 64m -t LZP -e TPAQ
+        42MB     20.00s    20.35%      10.10 kanzi -x64 -b 64m -t MM -e TPAQ
+        46MB      7.01s    22.33%      28.82 kanzi -x64 -b 64m -t BWT -e CM
+        46MB      8.66s    22.33%      23.35 kanzi -x64 -b 64m -t BWTS -e CM
+        46MB     27.56s    22.72%       7.33 kanzi -x64 -b 64m -t BWT -e TPAQX
+        46MB     29.50s    22.72%       6.85 kanzi -x64 -b 64m -t BWTS -e TPAQX
+        47MB     19.89s    22.85%      10.16 kanzi -x64 -b 64m -t BWT -e TPAQ
+        47MB     21.76s    22.85%       9.28 kanzi -x64 -b 64m -t BWTS -e TPAQ
+        54MB      4.90s    26.33%      41.25 kanzi -x64 -b 64m -t BWT -e FPAQ
+        54MB      6.44s    26.33%      31.37 kanzi -x64 -b 64m -t BWTS -e FPAQ
+        57MB      1.89s    27.79%     106.79 kanzi -x64 -b 64m -t ROLZX -e NONE
 --
-        25MB     0.061s   100.00%     395.26 kanzi -x64 -b 64m -t DNA -e NONE
-        25MB     0.064s   100.00%     376.94 kanzi -x64 -b 64m -t ZRLT -e NONE
-        25MB     0.073s   100.00%     327.93 kanzi -x64 -b 64m -t NONE -e NONE
-        25MB     0.074s   100.00%     323.40 kanzi -x64 -b 64m -t UTF -e NONE
-        25MB     0.076s   100.00%     318.76 kanzi -x64 -b 64m -t MM -e NONE
-        25MB     0.082s   100.00%     292.54 kanzi -x64 -b 64m -t EXE -e NONE
-        25MB     0.477s   100.00%      50.54 kanzi -x64 -b 64m -t RANK -e NONE
-        25MB     0.611s   100.00%      39.41 kanzi -x64 -b 64m -t SRT -e NONE
-        25MB     0.642s   100.00%      37.52 kanzi -x64 -b 64m -t MTFT -e NONE
+       203MB      1.72s   100.00%     117.32 kanzi -x64 -b 64m -t RANK -e NONE
+       203MB      2.58s   100.00%      78.45 kanzi -x64 -b 64m -t MTFT -e NONE
+       203MB      4.18s   100.00%      48.38 kanzi -x64 -b 64m -t BWT -e NONE
+       203MB      5.57s   100.00%      36.30 kanzi -x64 -b 64m -t BWTS -e NONE
+       203MB     0.240s   100.00%     841.03 kanzi -x64 -b 64m -t NONE -e NONE
+       203MB     0.251s   100.00%     804.23 kanzi -x64 -b 64m -t PACK -e NONE
+       203MB     0.253s   100.00%     798.29 kanzi -x64 -b 64m -t DNA -e NONE
+       203MB     0.267s   100.00%     755.68 kanzi -x64 -b 64m -t MM -e NONE
+       203MB     0.271s   100.00%     744.94 kanzi -x64 -b 64m -t UTF -e NONE
+       203MB     0.282s   100.00%     715.77 kanzi -x64 -b 64m -t EXE -e NONE
 
 # KANZI Parallel Tests - Two Transform Combinations
-[INFO] Running Two transform combinations (2160 tests in parallel)
-       111KB      5.47s     0.44%       4.40 kanzi -x64 -b 64m -t BWTS+RLT -e TPAQ
-       112KB      2.53s     0.45%       9.53 kanzi -x64 -b 64m -t BWT+LZP -e CM
-       112KB      2.89s     0.45%       8.32 kanzi -x64 -b 64m -t BWT+LZP -e TPAQ
-       112KB      2.93s     0.45%       8.22 kanzi -x64 -b 64m -t BWT+RLT -e TPAQ
-       112KB      3.82s     0.45%       6.31 kanzi -x64 -b 64m -t BWT+RLT -e TPAQX
-       112KB      4.05s     0.45%       5.95 kanzi -x64 -b 64m -t BWT+LZP -e TPAQX
-       112KB      4.79s     0.45%       5.03 kanzi -x64 -b 64m -t BWTS+LZP -e CM
-       112KB      5.82s     0.45%       4.14 kanzi -x64 -b 64m -t BWTS+LZP -e TPAQ
-       112KB      6.30s     0.45%       3.82 kanzi -x64 -b 64m -t BWTS+RLT -e TPAQX
-       112KB      6.86s     0.45%       3.51 kanzi -x64 -b 64m -t BWTS+LZP -e TPAQX
-       113KB      3.65s     0.45%       6.59 kanzi -x64 -b 64m -t PACK+BWT -e TPAQX
-       113KB      4.55s     0.45%       5.28 kanzi -x64 -b 64m -t PACK+BWTS -e TPAQX
-       113KB      5.29s     0.45%       4.55 kanzi -x64 -b 64m -t TEXT+BWT -e TPAQX
-       113KB      7.36s     0.45%       3.27 kanzi -x64 -b 64m -t TEXT+BWTS -e TPAQX
-       115KB      2.93s     0.46%       8.22 kanzi -x64 -b 64m -t PACK+BWT -e TPAQ
-       115KB      3.83s     0.46%       6.28 kanzi -x64 -b 64m -t PACK+BWTS -e TPAQ
-       115KB      4.67s     0.46%       5.15 kanzi -x64 -b 64m -t TEXT+BWT -e TPAQ
-       115KB      5.56s     0.46%       4.33 kanzi -x64 -b 64m -t RLT+BWT -e TPAQ
-       115KB      6.12s     0.46%       3.93 kanzi -x64 -b 64m -t RLT+BWT -e TPAQX
-       115KB      6.19s     0.46%       3.89 kanzi -x64 -b 64m -t EXE+BWT -e TPAQX
-       115KB      6.27s     0.46%       3.84 kanzi -x64 -b 64m -t MM+BWT -e TPAQX
-       115KB      6.30s     0.46%       3.82 kanzi -x64 -b 64m -t TEXT+BWTS -e TPAQ
-       115KB      6.56s     0.46%       3.67 kanzi -x64 -b 64m -t ZRLT+BWT -e TPAQX
-       115KB      7.11s     0.46%       3.38 kanzi -x64 -b 64m -t BWT+EXE -e TPAQX
+[INFO] Running Two transform combinations (2160 tests, possibly in parallel)
+        40MB     30.45s    19.63%       6.63 kanzi -x64 -b 64m -t RLT+PACK -e TPAQX
+        40MB     30.52s    19.63%       6.62 kanzi -x64 -b 64m -t EXE+RLT -e TPAQX
+        40MB     30.54s    19.63%       6.61 kanzi -x64 -b 64m -t RLT+EXE -e TPAQX
+        40MB     30.55s    19.63%       6.61 kanzi -x64 -b 64m -t RLT+TEXT -e TPAQX
+        40MB     30.67s    19.63%       6.58 kanzi -x64 -b 64m -t TEXT+RLT -e TPAQX
+        40MB     31.28s    19.63%       6.46 kanzi -x64 -b 64m -t PACK+RLT -e TPAQX
+        40MB     30.58s    19.64%       6.60 kanzi -x64 -b 64m -t RLT+ZRLT -e TPAQX
+        40MB     29.12s    19.68%       6.94 kanzi -x64 -b 64m -t RLT+LZP -e TPAQX
+	[...]
 --
-        25MB     0.646s   100.00%      37.29 kanzi -x64 -b 64m -t EXE+SRT -e NONE
-        25MB     0.650s   100.00%      37.04 kanzi -x64 -b 64m -t SRT+EXE -e NONE
-        25MB     0.650s   100.00%      37.06 kanzi -x64 -b 64m -t ZRLT+MTFT -e NONE
-        25MB     0.654s   100.00%      36.85 kanzi -x64 -b 64m -t MTFT+MM -e NONE
-        25MB     0.656s   100.00%      36.72 kanzi -x64 -b 64m -t MM+MTFT -e NONE
-        25MB     0.656s   100.00%      36.73 kanzi -x64 -b 64m -t MTFT+TEXT -e NONE
-        25MB     0.661s   100.00%      36.44 kanzi -x64 -b 64m -t MTFT+EXE -e NONE
-        25MB     0.663s   100.00%      36.33 kanzi -x64 -b 64m -t EXE+MTFT -e NONE
-        25MB     0.966s   100.00%      24.93 kanzi -x64 -b 64m -t SRT+RANK -e NONE
-
-# KANZI Parallel Tests - Three Transform Combinations
-[INFO] Running Three transform combinations (32400 tests in parallel)
-       107KB      3.33s     0.43%       7.22 kanzi -x64 -b 64m -t BWT+SRT+ZRLT -e TPAQ
-       107KB      4.03s     0.43%       5.98 kanzi -x64 -b 64m -t BWT+SRT+ZRLT -e TPAQX
-       107KB      5.91s     0.43%       4.07 kanzi -x64 -b 64m -t BWTS+SRT+ZRLT -e TPAQ
-       107KB      6.82s     0.43%       3.53 kanzi -x64 -b 64m -t BWTS+SRT+ZRLT -e TPAQX
-       108KB      2.93s     0.43%       8.21 kanzi -x64 -b 64m -t BWT+SRT+RLT -e TPAQ
-       108KB      3.85s     0.43%       6.25 kanzi -x64 -b 64m -t BWT+SRT+RLT -e TPAQX
-       108KB      5.23s     0.43%       4.60 kanzi -x64 -b 64m -t BWTS+SRT+RLT -e TPAQ
-       108KB      6.04s     0.43%       3.98 kanzi -x64 -b 64m -t BWTS+MTFT+ZRLT -e TPAQ
-       108KB      6.23s     0.43%       3.86 kanzi -x64 -b 64m -t BWTS+SRT+RLT -e TPAQX
-       108KB      7.10s     0.43%       3.39 kanzi -x64 -b 64m -t BWTS+MTFT+ZRLT -e TPAQX
-       109KB      6.13s     0.43%       3.92 kanzi -x64 -b 64m -t BWTS+MTFT+RLT -e TPAQX
-       109KB      2.78s     0.44%       8.66 kanzi -x64 -b 64m -t BWT+SRT+ZRLT -e CM
-       109KB      5.30s     0.44%       4.54 kanzi -x64 -b 64m -t BWTS+MTFT+RLT -e TPAQ
-       109KB      5.32s     0.44%       4.53 kanzi -x64 -b 64m -t BWTS+SRT+ZRLT -e CM
-       109KB      6.09s     0.44%       3.95 kanzi -x64 -b 64m -t BWTS+RANK+ZRLT -e TPAQ
-       109KB      7.07s     0.44%       3.40 kanzi -x64 -b 64m -t BWTS+RANK+ZRLT -e TPAQX
-       110KB      2.20s     0.44%      10.93 kanzi -x64 -b 64m -t TEXT+BWT+LZP -e CM
-       110KB      3.34s     0.44%       7.20 kanzi -x64 -b 64m -t TEXT+BWT+LZP -e TPAQX
-       110KB      3.65s     0.44%       6.60 kanzi -x64 -b 64m -t TEXT+PACK+BWT -e TPAQX
-       110KB      3.72s     0.44%       6.47 kanzi -x64 -b 64m -t TEXT+BWTS+LZP -e CM
-       110KB      4.61s     0.44%       5.22 kanzi -x64 -b 64m -t TEXT+PACK+BWTS -e TPAQX
-       110KB      5.35s     0.44%       4.50 kanzi -x64 -b 64m -t BWTS+RANK+RLT -e TPAQ
-       110KB      5.42s     0.44%       4.44 kanzi -x64 -b 64m -t TEXT+BWTS+LZP -e TPAQX
-       110KB      6.24s     0.44%       3.85 kanzi -x64 -b 64m -t BWTS+RANK+RLT -e TPAQX
---
-        25MB     0.973s   100.00%      24.75 kanzi -x64 -b 64m -t MM+SRT+RANK -e NONE
-        25MB     0.973s   100.00%      24.76 kanzi -x64 -b 64m -t ZRLT+SRT+RANK -e NONE
-        25MB     0.975s   100.00%      24.70 kanzi -x64 -b 64m -t SRT+RANK+MM -e NONE
-        25MB     0.978s   100.00%      24.61 kanzi -x64 -b 64m -t SRT+RANK+TEXT -e NONE
-        25MB     0.978s   100.00%      24.64 kanzi -x64 -b 64m -t SRT+TEXT+RANK -e NONE
-        25MB     0.989s   100.00%      24.34 kanzi -x64 -b 64m -t SRT+MM+RANK -e NONE
-        25MB     0.989s   100.00%      24.35 kanzi -x64 -b 64m -t EXE+SRT+RANK -e NONE
-        25MB     0.990s   100.00%      24.32 kanzi -x64 -b 64m -t SRT+RANK+EXE -e NONE
-        25MB     0.993s   100.00%      24.26 kanzi -x64 -b 64m -t SRT+EXE+RANK -e NONE
+       203MB      8.63s   100.00%      23.42 kanzi -x64 -b 64m -t MTFT+BWTS -e NONE
+       203MB     0.283s   100.00%     714.72 kanzi -x64 -b 64m -t MM+PACK -e NONE
+       203MB     0.283s   100.00%     715.22 kanzi -x64 -b 64m -t PACK+MM -e NONE
+       203MB     0.291s   100.00%     694.04 kanzi -x64 -b 64m -t EXE+PACK -e NONE
+       203MB     0.300s   100.00%     673.78 kanzi -x64 -b 64m -t PACK+EXE -e NONE
+       203MB     0.316s   100.00%     639.43 kanzi -x64 -b 64m -t EXE+MM -e NONE
+       203MB     0.322s   100.00%     627.41 kanzi -x64 -b 64m -t MM+EXE -e NONE
+       205MB      4.23s   101.27%      47.81 kanzi -x64 -b 64m -t BWT+MM -e NONE
+       205MB      5.78s   101.27%      34.95 kanzi -x64 -b 64m -t BWTS+MM -e NONE
+       205MB      1.67s   101.37%     120.83 kanzi -x64 -b 64m -t SRT+MM -e NONE
 
 ==========================================
 FINAL ANALYSIS & RECOMMENDATIONS
 ==========================================
 
-📊 **BEST COMPRESSION RATIO:**
-   Algorithm: kanzi -x64 -b 64m -t TEXT+BWTS+SRT+ZRLT -e TPAQ
-   Size:      25MB → 107KB (0.43%)
-   Time:      4.06s
-   Speed:     5.92 MB/s
-   Savings:   24MB (99.57% reduction)
-
-⚖️  **MOST REASONABLE TRADE-OFF:**
-   Algorithm: kanzi -l5
-   Size:      25MB → 191KB (0.77%)
-   Time:      0.189s
-   Speed:     127.61 MB/s
-   Savings:   24MB (99.23% reduction)
-
-💡 **INSIGHTS:**
-   • Tested 34817 compression configurations
-   • 10189 algorithms achieved >100 MB/s speed
-   • 15536 algorithms achieved <5% compression ratio
-   • Excellent compression achieved (<3%)
-   • Balanced option provides good speed (>50 MB/s)
-72911.64user 7389.39system 2:47:04elapsed 801%CPU (0avgtext+0avgdata 8608824maxresident)k
-496inputs+6000outputs (274major+2692800236minor)pagefaults 0swaps
-fre  2 jan 20:40:15 CET 2026
-```
-This is an example of the much too high time measured in a parallel test: 4.06s reported for the
-`-x64 -b 64m -t TEXT+BWTS+SRT+ZRLT -e TPAQ` case while only 1561 ms (1.56s) measured by kanzi itself in
-the non-parallel [time-size-chk-kanzi-algos.sh](#time-size-chk-kanzi-algossh) script.
-The approximately 1.55s is confirmed by manual timing:
-```
-$ \time kanzi -c -x64 -b 64m -t TEXT+BWTS+SRT+ZRLT -e TPAQ -j 1 -o none -v 4 -i boot-HOSTNAME-fc30big.log |grep time:
-Compression time:   1543 ms
-1.31user 0.22system 0:01.54elapsed 99%CPU (0avgtext+0avgdata 420360maxresident)k
-0inputs+0outputs (0major+160215minor)pagefaults 0swaps
-```
-The reason for the slowdown is that memory hungry transforms (BWT, BWTS) and entropy coders (TPAQ, TPAQX)
-compete for memory bandwidth.
-This test shows that the SRT transform is slowed down by only a factor 1.09
-while the BWT transform is slowed down by a factor 2.6:
-```
-$ echo 1 |\time parallel -j1 'echo $(kanzi -c -v 0 -x64 -b 64m -t SRT -e NONE -j 1 -o stdout -i boot-HOSTNAME-fc30big.log|wc -c)'
-25260649 1
-0.62user 0.04system 0:00.67elapsed 100%CPU (0avgtext+0avgdata 53996maxresident)k
-0inputs+0outputs (0major+21963minor)pagefaults 0swaps
-
-$ seq 1 8 |\time parallel -j8 'echo $(kanzi -c -v 0 -x64 -b 64m -t SRT -e NONE -j 1 -o stdout -i boot-HOSTNAME-fc30big.log|wc -c)'
-25260649 1
-25260649 2
-25260649 5
-25260649 6
-25260649 3
-25260649 7
-25260649 8
-25260649 4
-4.72user 0.46system 0:00.73elapsed 708%CPU (0avgtext+0avgdata 53928maxresident)k
-0inputs+0outputs (0major+122227minor)pagefaults 0swaps  ### Note 53 MiB max resident memory for SRT
-
-$ echo 1 |\time parallel -j1 'echo $(kanzi -c -v 0 -x64 -b 64m -t BWT -e NONE -j 1 -o stdout -i boot-HOSTNAME-fc30big.log|wc -c)'
-25260286 1
-1.24user 0.08system 0:01.32elapsed 100%CPU (0avgtext+0avgdata 152740maxresident)k
-0inputs+0outputs (0major+47232minor)pagefaults 0swaps
-
-$ seq 1 8 |\time parallel -j8 'echo $(kanzi -c -v 0 -x64 -b 64m -t BWT -e NONE -j 1 -o stdout -i boot-HOSTNAME-fc30big.log|wc -c)'
-25260286 5
-25260286 4
-25260286 2
-25260286 1
-25260286 8
-25260286 7
-25260286 6
-25260286 3
-26.00user 0.98system 0:03.52elapsed 766%CPU (0avgtext+0avgdata 152672maxresident)k
-0inputs+0outputs (0major+324133minor)pagefaults 0swaps   ### Note 149 MiB max resident memory for BWT
-```
-Same test with BWTS instead of BWT gives a factor 3.7x (1.64s -> 6.11s) slowdown with 245 MiB max resident memory.
-
-The slowdown factor for parallel jobs doesn't necessarily increase with increasing memory use, though:
-testing `-t NONE -e TPAQX` gives only a factor 1.9 slowdown (5.35s -> 10.16s) in spite of 1.4 GiB mem used in that test.
-Probably because TPAQX has a more regular/friendly memory access pattern than BWTS.
-
-### Example 2 -- single-threaded non-parallel run on the Fedora 30 boot.log file
-
-The most reliable timings are obtained with NJOBS=1 like here:
-```
-$ (date;NJOBS=1 \time kanzi_benchmark.sh boot-HOSTNAME-fc30big.log;date)> ...boot_HOSTNAME_fc30big_1t...out 2>&1
-
-$ grep -E -B10 -A25 '#|==' ...boot_HOSTNAME_fc30big_1t...out
-lør  3 jan 19:21:52 CET 2026
-[INFO] Benchmarking compression algorithms
-[INFO] Input file: boot-HOSTNAME-fc30big.log (25MB)
-[INFO] Parallel jobs: 1
-
-  COMPRESSED       TIME     RATIO      SPEED ALGORITHM
------------- ---------- --------- ---------- ----------
-
-# BZIP3 Variants
-       231KB     0.864s     0.93%      27.88 bzip3
-       209KB     0.909s     0.84%      26.48 bzip3 -b32
-       209KB     0.993s     0.84%      24.25 bzip3 -b64
-       209KB      1.07s     0.84%      22.60 bzip3 -b128
-       209KB      1.28s     0.84%      18.83 bzip3 -b256
-
-# KANZI Level Presets (Default Block Size)
-       2.6MB     0.051s    10.56%     473.41 kanzi -l1
-       1.9MB     0.054s     7.57%     442.27 kanzi -l2
-       1.4MB     0.137s     5.74%     175.24 kanzi -l3
-       424KB     0.147s     1.71%     164.32 kanzi -l4
-       191KB     0.627s     0.77%      38.45 kanzi -l5
-       139KB     0.751s     0.56%      32.08 kanzi -l6
-       221KB     0.496s     0.89%      48.54 kanzi -l7
-       399KB      3.18s     1.61%       7.57 kanzi -l8
-       368KB      3.84s     1.49%       6.26 kanzi -l9
-
-# KANZI Level Presets (64MB Block Size)
-       2.6MB     0.054s    10.45%     449.18 kanzi -b64m -l1
-       1.8MB     0.062s     7.39%     390.65 kanzi -b64m -l2
-       1.4MB     0.129s     5.74%     186.06 kanzi -b64m -l3
-       359KB     0.130s     1.45%     185.05 kanzi -b64m -l4
-       124KB     0.982s     0.50%      24.52 kanzi -b64m -l5
-       111KB      1.08s     0.44%      22.27 kanzi -b64m -l6
-       197KB     0.555s     0.79%      43.41 kanzi -b64m -l7
-       394KB      3.18s     1.59%       7.58 kanzi -b64m -l8
-       368KB      4.14s     1.49%       5.81 kanzi -b64m -l9
-
-# KANZI Large Block Sizes (Level 9)
-       468KB      6.31s     1.89%       3.81 kanzi -b1m -l9
-       399KB      4.99s     1.61%       4.82 kanzi -b4m -l9
-       386KB      4.30s     1.56%       5.60 kanzi -b8m -l9
-       376KB      4.19s     1.52%       5.75 kanzi -b16m -l9
-       368KB      3.88s     1.49%       6.21 kanzi -b32m -l9
-       368KB      4.07s     1.49%       5.91 kanzi -b64m -l9
-       368KB      4.13s     1.49%       5.83 kanzi -b96m -l9
-       368KB      4.25s     1.49%       5.67 kanzi -b128m -l9
-       368KB      4.29s     1.49%       5.61 kanzi -b256m -l9
-
-# KANZI Specialized Transform Chains (64MB blocks)
-       399KB      5.11s     1.61%       4.71 kanzi -tRLT -eTpaqx
-       261KB      3.61s     1.05%       6.66 kanzi -tPACK -eTpaqx
-       251KB      4.25s     1.01%       5.66 kanzi -tPACK+ZRLT+PACK -eTpaqx
-       260KB      3.59s     1.05%       6.71 kanzi -tPACK+RLT -eTpaqx
-       [...]
-       109KB      1.75s     0.43%      13.77 kanzi -tTEXT+BWT+MTFT+RLT -eTpaqx
-       115KB      5.37s     0.46%       4.48 kanzi -tBWT+MTFT+RLT -eTpaqx
-
-# KANZI Parallel Tests - 4-Transform BWT/BWTS Combinations
-[INFO] Running 4-transform TEXT combinations (24 tests in parallel)
-       107KB      1.30s     0.43%      18.58 kanzi -x64 -b 64m -t TEXT+BWT+SRT+ZRLT -e TPAQ
-       107KB      1.51s     0.43%      15.94 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+ZRLT -e TPAQ
-       107KB      1.71s     0.43%      14.04 kanzi -x64 -b 64m -t TEXT+BWT+SRT+ZRLT -e TPAQX
-       107KB      1.93s     0.43%      12.47 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+RLT -e TPAQX
-       107KB      1.93s     0.43%      12.50 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+ZRLT -e TPAQX
-       108KB      1.08s     0.43%      22.30 kanzi -x64 -b 64m -t TEXT+BWT+SRT+ZRLT -e CM
-       108KB      1.30s     0.43%      18.51 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+ZRLT -e CM
-       108KB      1.31s     0.43%      18.45 kanzi -x64 -b 64m -t TEXT+BWT+SRT+RLT -e TPAQ
-       108KB      1.32s     0.43%      18.26 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+ZRLT -e TPAQ
-       108KB      1.53s     0.43%      15.74 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+ZRLT -e TPAQ
-       108KB      1.53s     0.43%      15.77 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+RLT -e TPAQ
-       108KB      1.72s     0.43%      13.99 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+ZRLT -e TPAQX
-       108KB      1.72s     0.43%      14.03 kanzi -x64 -b 64m -t TEXT+BWT+SRT+RLT -e TPAQX
-       108KB      1.94s     0.43%      12.44 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+ZRLT -e TPAQX
-       108KB      1.95s     0.43%      12.32 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+RLT -e TPAQX
-       109KB      1.54s     0.43%      15.60 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+RLT -e TPAQ
-       109KB      1.75s     0.43%      13.79 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+RLT -e TPAQX
-       109KB      1.32s     0.44%      18.18 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+RLT -e TPAQ
-       110KB      1.10s     0.44%      21.92 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+ZRLT -e CM
-       110KB      1.31s     0.44%      18.36 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+ZRLT -e CM
-       122KB      1.09s     0.49%      22.05 kanzi -x64 -b 64m -t TEXT+BWT+SRT+RLT -e CM
-       122KB      1.31s     0.49%      18.38 kanzi -x64 -b 64m -t TEXT+BWTS+SRT+RLT -e CM
-       123KB      1.12s     0.49%      21.48 kanzi -x64 -b 64m -t TEXT+BWT+MTFT+RLT -e CM
-       123KB      1.33s     0.49%      18.14 kanzi -x64 -b 64m -t TEXT+BWTS+MTFT+RLT -e CM
-
-# KANZI Parallel Tests - Single Transform + Entropy
-[INFO] Running Single transform combinations (171 tests in parallel)
-       115KB      5.32s     0.46%       4.53 kanzi -x64 -b 64m -t BWT -e TPAQX
-       115KB      5.63s     0.46%       4.27 kanzi -x64 -b 64m -t BWTS -e TPAQX
-       116KB      4.68s     0.46%       5.15 kanzi -x64 -b 64m -t BWT -e TPAQ
-       116KB      4.99s     0.46%       4.82 kanzi -x64 -b 64m -t BWTS -e TPAQ
-       122KB      2.31s     0.49%      10.43 kanzi -x64 -b 64m -t BWT -e CM
-       122KB      2.64s     0.49%       9.11 kanzi -x64 -b 64m -t BWTS -e CM
-       260KB      1.27s     1.05%      18.99 kanzi -x64 -b 64m -t BWT -e ANS1
-       260KB      1.60s     1.05%      15.09 kanzi -x64 -b 64m -t BWTS -e ANS1
-       261KB      1.54s     1.05%      15.67 kanzi -x64 -b 64m -t BWT -e FPAQ
-       261KB      1.86s     1.05%      12.94 kanzi -x64 -b 64m -t BWTS -e FPAQ
-       261KB      3.59s     1.05%       6.70 kanzi -x64 -b 64m -t PACK -e TPAQX
-       310KB      2.23s     1.25%      10.79 kanzi -x64 -b 64m -t PACK -e TPAQ
-       333KB      3.14s     1.34%       7.66 kanzi -x64 -b 64m -t LZP -e TPAQX
-       358KB      2.35s     1.44%      10.26 kanzi -x64 -b 64m -t LZP -e TPAQ
-       369KB      4.15s     1.49%       5.80 kanzi -x64 -b 64m -t TEXT -e TPAQX
-       394KB      3.18s     1.59%       7.57 kanzi -x64 -b 64m -t TEXT -e TPAQ
-       399KB      5.08s     1.61%       4.74 kanzi -x64 -b 64m -t RLT -e TPAQX
-       400KB     0.367s     1.61%      65.62 kanzi -x64 -b 64m -t ROLZ -e TPAQ
-       400KB     0.859s     1.62%      28.05 kanzi -x64 -b 64m -t ROLZ -e TPAQX
-       401KB     0.060s     1.62%     400.03 kanzi -x64 -b 64m -t ROLZ -e NONE
-       401KB     0.063s     1.62%     383.58 kanzi -x64 -b 64m -t ROLZ -e HUFFMAN
-       401KB     0.088s     1.62%     274.06 kanzi -x64 -b 64m -t ROLZ -e CM
-       402KB      5.14s     1.62%       4.68 kanzi -x64 -b 64m -t DNA -e TPAQX
-       402KB      5.14s     1.62%       4.68 kanzi -x64 -b 64m -t ZRLT -e TPAQX
---
-        25MB     0.048s   100.00%     500.62 kanzi -x64 -b 64m -t NONE -e NONE
-        25MB     0.053s   100.00%     454.70 kanzi -x64 -b 64m -t DNA -e NONE
-        25MB     0.058s   100.00%     415.32 kanzi -x64 -b 64m -t UTF -e NONE
-        25MB     0.059s   100.00%     408.11 kanzi -x64 -b 64m -t MM -e NONE
-        25MB     0.060s   100.00%     404.49 kanzi -x64 -b 64m -t ZRLT -e NONE
-        25MB     0.069s   100.00%     350.98 kanzi -x64 -b 64m -t EXE -e NONE
-        25MB     0.453s   100.00%      53.17 kanzi -x64 -b 64m -t RANK -e NONE
-        25MB     0.575s   100.00%      41.93 kanzi -x64 -b 64m -t SRT -e NONE
-        25MB     0.601s   100.00%      40.07 kanzi -x64 -b 64m -t MTFT -e NONE
-
-# KANZI Parallel Tests - Two Transform Combinations
-[INFO] Running Two transform combinations (2160 tests in parallel)
-       111KB      1.78s     0.44%      13.54 kanzi -x64 -b 64m -t BWTS+RLT -e TPAQ
-       112KB      1.23s     0.45%      19.53 kanzi -x64 -b 64m -t BWT+LZP -e CM
-       112KB      1.45s     0.45%      16.56 kanzi -x64 -b 64m -t BWT+RLT -e TPAQ
-       112KB      1.51s     0.45%      15.94 kanzi -x64 -b 64m -t BWT+LZP -e TPAQ
-       112KB      1.56s     0.45%      15.45 kanzi -x64 -b 64m -t BWTS+LZP -e CM
-       112KB      1.85s     0.45%      13.03 kanzi -x64 -b 64m -t BWT+RLT -e TPAQX
-       112KB      1.86s     0.45%      12.95 kanzi -x64 -b 64m -t BWTS+LZP -e TPAQ
-       112KB      1.91s     0.45%      12.61 kanzi -x64 -b 64m -t BWT+LZP -e TPAQX
-       112KB      2.18s     0.45%      11.07 kanzi -x64 -b 64m -t BWTS+RLT -e TPAQX
-       112KB      2.30s     0.45%      10.48 kanzi -x64 -b 64m -t BWTS+LZP -e TPAQX
-       113KB      3.07s     0.45%       7.85 kanzi -x64 -b 64m -t PACK+BWT -e TPAQX
-       [...]
-        25MB     0.626s   100.00%      38.49 kanzi -x64 -b 64m -t EXE+MTFT -e NONE
-        25MB     0.628s   100.00%      38.37 kanzi -x64 -b 64m -t MM+MTFT -e NONE
-        25MB     0.906s   100.00%      26.57 kanzi -x64 -b 64m -t SRT+RANK -e NONE
-        25MB     0.959s   100.00%      25.11 kanzi -x64 -b 64m -t SRT+MTFT -e NONE
-        25MB     0.964s   100.00%      24.98 kanzi -x64 -b 64m -t RANK+SRT -e NONE
-
-# KANZI Parallel Tests - Three Transform Combinations
-[INFO] Running Three transform combinations (32400 tests in parallel)
-       107KB      1.46s     0.43%      16.50 kanzi -x64 -b 64m -t BWT+SRT+ZRLT -e TPAQ
-       107KB      1.78s     0.43%      13.52 kanzi -x64 -b 64m -t BWTS+SRT+ZRLT -e TPAQ
-       107KB      1.84s     0.43%      13.05 kanzi -x64 -b 64m -t BWT+SRT+ZRLT -e TPAQX
-       107KB      2.15s     0.43%      11.19 kanzi -x64 -b 64m -t BWTS+SRT+ZRLT -e TPAQX
-       108KB      1.47s     0.43%      16.43 kanzi -x64 -b 64m -t BWT+SRT+RLT -e TPAQ
-       108KB      1.80s     0.43%      13.38 kanzi -x64 -b 64m -t BWTS+SRT+RLT -e TPAQ
-       [...]
-        25MB     0.991s   100.00%      24.31 kanzi -x64 -b 64m -t RANK+EXE+SRT -e NONE
-        25MB     0.993s   100.00%      24.26 kanzi -x64 -b 64m -t RANK+SRT+EXE -e NONE
-
-==========================================
-FINAL ANALYSIS & RECOMMENDATIONS
-==========================================
+# From best via balanced to fastest (convex hull of Pareto front in double-logarithmic space)
+        40MB     30.19s    19.63%       6.69 kanzi -tRLT+TEXT+PACK -eTpaqx
+        40MB     19.49s    19.72%      10.36 kanzi -l9
+        46MB      3.55s    22.32%      56.86 kanzi -l7
+        48MB      2.29s    23.36%      88.39 kanzi -l6
+        66MB     0.173s    32.38%    1167.73 kanzi -l2
 
 📊 **BEST COMPRESSION RATIO:**
-   Algorithm: kanzi -x64 -b 64m -t TEXT+BWTS+SRT+ZRLT -e TPAQ
-   Size:      25MB → 107KB (0.43%)
-   Time:      1.51s
-   Speed:     15.94 MB/s
-   Savings:   24MB (99.57% reduction)
+   Algorithm: kanzi -tRLT+TEXT+PACK -eTpaqx
+   Size:      203MB → 40MB (19.63%)
+   Time:      30.19s
+   Speed:     6.69 MB/s
+   Savings:   163MB (80.37% reduction)
 
 ⚖️  **MOST REASONABLE TRADE-OFF:**
-   Algorithm: kanzi -x64 -b 64m -t PACK+ROLZX+MM -e NONE
-   Size:      25MB → 332KB (1.34%)
-   Time:      0.143s
-   Speed:     168.53 MB/s
-   Savings:   24MB (98.66% reduction)
+   Algorithm: kanzi -l7
+   Size:      203MB → 46MB (22.32%)
+   Time:      3.55s
+   Speed:     56.86 MB/s
+   Savings:   158MB (77.68% reduction)
 
 💡 **INSIGHTS:**
-   • Tested 34817 compression configurations
-   • 11796 algorithms achieved >100 MB/s speed
-   • 15536 algorithms achieved <5% compression ratio
-   • Excellent compression achieved (<3%)
+   • Tested 2417 compression configurations
+   • 891 algorithms achieved >100 MB/s speed
+   • 0 algorithms achieved <5% compression ratio
    • Balanced option provides good speed (>50 MB/s)
-40469.97user 4784.76system 13:28:24elapsed 93%CPU (0avgtext+0avgdata 1476008maxresident)k
-0inputs+6008outputs (62major+2685089225minor)pagefaults 0swaps
-søn  4 jan 08:50:16 CET 2026
+53950.72user 1850.12system 5:36:32elapsed 276%CPU (0avgtext+0avgdata 8968932maxresident)k
+0inputs+616outputs (2major+1042322920minor)pagefaults 0swaps
+tir 31 mar 04:10:48 CEST 2026
 ```
-Now we got 1.51s for the best compression ratio instead of 4.06s
-and an entirely different recommendation.
+Note these two facts about the winner in compression ratio:
 
-Note that the recommendation is based on a rather arbitrary weighting between
-compression ratio and speed and shouldn't be blindly accepted.
+* `-x64 -b 64m` is implicit here; that's why it's about 1.5 times slower than the `-l9` with the 32 MiB default block size
+* The TEXT and PACK transformations don't affect the size at all for this file so `-b 64m -t RLT -e TPAQX` might as well have been the winner except that random fluctuations made it 0.02s slower in this test
 
-In the example, the recommended MM transformation is silly and just there due to
-the limited precision of the measurements.
-It's so fast that it doesn't make a measurable difference:
-```
-$ sync;for t in PACK+ROLZX+MM PACK+ROLZX;do for i in 1 2 3;do printf "$t:\t"; echo `kanzi -c -v 3 -x64 -b 64m -t $t -e NONE -j 1 -o none -i boot-HOSTNAME-fc30big.log|grep -E 'time:|Output size'`;done;echo;done
-PACK+ROLZX+MM:	Compression time: 141 ms Output size: 339258
-PACK+ROLZX+MM:	Compression time: 141 ms Output size: 339258
-PACK+ROLZX+MM:	Compression time: 140 ms Output size: 339258
-
-PACK+ROLZX:	Compression time: 141 ms Output size: 339258
-PACK+ROLZX:	Compression time: 140 ms Output size: 339258
-PACK+ROLZX:	Compression time: 140 ms Output size: 339258
-```
+Note in general for all of the printed options, as of kanzi 2.5.1: kanzi is very unflexible in its option parsing.
+It does _not_ use [getopt(3)](https://manpages.ubuntu.com/manpages/trusty/en/man3/getopt.3.html) and requires a space between the option flag and the value following it.  So both `-l7` and e.g. `-eTpaqx` will be ignored;
+`-l 7` and `-e Tpaqx` (or e.g. `-e TPAQX`) must be used instead.
