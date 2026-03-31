@@ -659,3 +659,8 @@ Note these two facts about the winner in compression ratio:
 Note in general for all of the printed options, as of kanzi 2.5.1: kanzi is very unflexible in its option parsing.
 It does _not_ use [getopt(3)](https://manpages.ubuntu.com/manpages/trusty/en/man3/getopt.3.html) and requires a space between the option flag and the value following it.  So both `-l7` and e.g. `-eTpaqx` will be ignored;
 `-l 7` and `-e Tpaqx` (or e.g. `-e TPAQX`) must be used instead.
+
+![Graph for Silesia on AMD Ryzen 5900HX](doc/kanzi_benchmark-silesia_2d.png)
+
+Compression time vs. size for Silesia on AMD Ryzen 5900HX.  The pink line with 5 large crosses marks the convex Pareto front,
+with level 7 being the middle one of the 5.
