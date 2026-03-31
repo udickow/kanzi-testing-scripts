@@ -662,5 +662,5 @@ It does _not_ use [getopt(3)](https://manpages.ubuntu.com/manpages/trusty/en/man
 
 ![Graph for Silesia on AMD Ryzen 5900HX](doc/kanzi_benchmark-silesia_2d.png)
 
-Compression time vs. size for Silesia on AMD Ryzen 5900HX.  The pink line with 5 large crosses marks the convex Pareto front,
+Compression time vs. size for Silesia on AMD Ryzen 5900HX.  The magenta line with 5 large crosses marks the convex Pareto front,
 with level 7 being the middle one of the 5.
