@@ -30,6 +30,7 @@ readonly SCRIPT_NAME="$(basename "$0")"
 # bc(1) doesn't know about locale (always prints ".") while the bash built-in
 # printf function _only_ accepts floats formatted according to current locale
 # (alternative but slower fix would be to use external /usr/bin/printf instead).
+# Also important for correct use of sort(1) that strictly follows locale only too.
 export LC_NUMERIC=C
 
 # Set defaults for parameters that may be changed via command line options
@@ -225,9 +226,9 @@ benchmark_compressor() {
 
 main() {
     # Check required commands
-    for cmd in bc stat numfmt getopt; do
+    for cmd in bc stat numfmt getopt perl pareto-convex.pl; do
         if ! command -v "$cmd" >/dev/null 2>&1; then
-            log_error "Required command '$cmd' not found"
+            log_error "Required command '$cmd' not found; please ensure it's in your PATH"
             exit 1
         fi
     done
@@ -469,33 +470,39 @@ analyze_results() {
         log_error "No results found for analysis"
         return 1
     fi
-    
-    # Find best compression (lowest ratio)
-    local best_compression
-    best_compression=$(sort -t'|' -k3 -n "$RESULTS_FILE" | head -1)
-    
-    # Find most reasonable compression (balance of ratio and speed)
-    # We'll use a weighted score: ratio * 2 + (100/speed) to favor compression but consider speed
-    local best_balanced
-    best_balanced=$(awk -F'|' -v orig="$original_size" '
-        {
-            ratio = $3
-            speed = $4
-            # Calculate balance score: lower is better
-            # Heavily weight compression ratio, but penalize very slow speeds
-            if (speed > 0) {
-                balance_score = ratio * 2 + (100 / speed)
-            } else {
-                balance_score = ratio * 2 + 1000  # Penalty for very slow
-            }
-            print balance_score "|" $0
-        }
-    ' "$RESULTS_FILE" | sort -t'|' -k1 -n | head -1 | cut -d'|' -f2-)
-    
+
+    # Find convex hull of Pareto front in double-logarithmic space (from best to fastest compression)
+    local pareto_lines=$(sort -t\| -n -k1,1 -k2,2 "$RESULTS_FILE" | \
+                             perl -F'\|' -ane 'print log($F[0])," ",($F[1]==0 ? -9999 : log($F[1])),"|$_"' | \
+                             pareto-convex.pl | cut -d\| -f2-)
+    local pareto_arr=()   # Array of Pareto lines, from best (element 0) to fastest (highest element)
+    readarray -t pareto_arr <<< "$pareto_lines"
+
+    # Find best compression (lowest compressed size)
+    local best_compression=${pareto_arr[0]}
+
+    # Find most reasonable compression (balance of ratio and speed).
+    # We'll choose the middle Pareto point, or the one above the middle if the number of points is even,
+    # except choose the 2nd (index 1) if only two Pareto points found.
+    local num_pareto=${#pareto_arr[@]}                                # Number of Pareto points found
+    local mid_pareto=$(( (num_pareto == 2 ? 1 : (num_pareto-1)/2) ))  # Index of balanced Pareto choice
+    local best_balanced=${pareto_arr[$mid_pareto]}
+
     # Parse results
     IFS='|' read -r best_size best_time best_ratio best_speed best_name <<< "$best_compression"
     IFS='|' read -r bal_size bal_time bal_ratio bal_speed bal_name <<< "$best_balanced"
-    
+
+    echo "# From best via balanced to fastest (convex hull of Pareto front in double-logarithmic space)"
+    while IFS='|' read -r size time ratio speed args; do
+        printf "%12s %10s %8.2f%% %10.2f %s\n" \
+               "$(format_size "$size")" \
+               "$(format_time "$time")" \
+               "$ratio" \
+               "$speed" \
+               "$args"
+    done <<< "$pareto_lines"
+    echo
+
     printf "📊 **BEST COMPRESSION RATIO:**\n"
     printf "   Algorithm: %s\n" "$best_name"
     printf "   Size:      %s → %s (%.2f%%)\n" \
