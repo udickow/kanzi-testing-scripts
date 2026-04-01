@@ -302,7 +302,7 @@ More test results and more detailed descriptions of the test files can be found 
 ## pareto-convex.pl
 
 This is a Perl script that reads standard input or one or more numerically sorted text files given on the command line.
-It prints out only a subset of the lines that begin with two integer or decimal notation numbers separated by whitespace.
+It prints out only a subset of the lines that begin with two integer or floating point numbers separated by whitespace.
 The subset is the lines where the two numbers (x,y) are part of the convex hull of the lower
 [Pareto front](https://en.wikipedia.org/wiki/Pareto_front).
 Its main purpose is to be used by the

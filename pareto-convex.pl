@@ -46,7 +46,8 @@ sub ppop { # Throw away most recent Pareto candidate (highest x)
 }
 
 while (<>) {
-    next unless /^\s*([-+]?\d+(?:\.\d+))\s+([-+]?\d+(?:\.\d+))/;
+    # Only look for lines starting with 2 integer or floating point numbers separated by whitespace
+    next unless /^\s*([-+]?\d+(?:\.\d*)?(?:[Ee][-+]?\d+)?)\s+([-+]?\d+(?:\.\d*)?(?:[Ee][-+]?\d+)?)/;
     my ($x, $y) = ($1, $2);
     if (!@px) { # This is the first matching line.  Save as first candidate point.
         ppush $x, $y, $_, $neg_inf;

@@ -472,7 +472,7 @@ analyze_results() {
     fi
 
     # Find convex hull of Pareto front in double-logarithmic space (from best to fastest compression)
-    local pareto_lines=$(sort -t\| -n -k1,1 -k2,2 "$RESULTS_FILE" | \
+    local pareto_lines=$(sort -t\| -g -k1,1 -k2,2 "$RESULTS_FILE" | \
                              perl -F'\|' -ane 'print log($F[0])," ",($F[1]==0 ? -9999 : log($F[1])),"|$_"' | \
                              pareto-convex.pl | cut -d\| -f2-)
     local pareto_arr=()   # Array of Pareto lines, from best (element 0) to fastest (highest element)
