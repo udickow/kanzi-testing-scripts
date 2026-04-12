@@ -37,7 +37,9 @@ export LC_NUMERIC=C
 # (for historic reasons we still allow setting NJOBS default via environment).
 NJOBS=${NJOBS:-$(($(nproc) / 2))}
 NPROGS=1
-NTHREADS=$NJOBS
+# Postpone setting NTHREADS to non-empty value since --jobs option may change NJOBS.
+#NTHREADS=$NJOBS
+NTHREADS=
 DEPTH=3
 
 # === UTILITY FUNCTIONS ===
@@ -128,6 +130,7 @@ parse_command_line() {
                 ;;
         esac
     done
+    NTHREADS=${NTHREADS:-$NJOBS}
     #echo "NJOBS=$NJOBS NPROGS=$NPROGS NTHREADS=$NTHREADS DEPTH=$DEPTH"
     #echo "Remaining args: $@"
 
