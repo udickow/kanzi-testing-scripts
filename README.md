@@ -167,9 +167,6 @@ OK       242268    3809    3662  |  -x64 -b 256m -j 1 -t EXE+TEXT+RLT+UTF+PACK -
 0inputs+0outputs (0major+4264342minor)pagefaults 0swaps
 lør  3 jan 10:26:57 CET 2026
 ```
-Compare the above with the similar test in the [kanzi_benchmark.sh](#kanzi_benchmarksh) section
-and note that e.g. the above 369 milliseconds for `kanzi -c -x64 -j 8 -l 6` is very close to the
-`0.370s` measured by the benchmark script.
 
 ## size-kanzi-algos-etc.sh
 
