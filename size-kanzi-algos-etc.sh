@@ -121,6 +121,7 @@ printf "%9d kanzi -x64 -b 128m -l 9\n" $(kanzi -c -x64 -b 128m -l 9 -j 2 -i "$if
 printf "%9d kanzi -x64 -b 256m -l 9\n" $(kanzi -c -x64 -b 256m -l 9 -j 1 -i "$ifile" -o stdout|wc -c)
 for trans in \
     RLT                   PACK                  \
+    PACK+PACK             PACK+PACK+PACK        \
     PACK+ZRLT+PACK        PACK+RLT              \
     RLT+PACK              RLT+TEXT+PACK         \
     RLT+PACK+LZP          RLT+PACK+LZP+RLT      \
@@ -134,20 +135,23 @@ for trans in \
     EXE+TEXT+RLT          EXE+TEXT              \
     TEXT+BWTS+SRT+ZRLT    BWTS+SRT+ZRLT         \
     TEXT+BWTS+MTFT+RLT    BWTS+MTFT+RLT         \
-    TEXT+BWT+MTFT+RLT     BWT+MTFT+RLT
+    TEXT+BWT+MTFT+RLT     BWT+MTFT+RLT          \
+    BWT+LZP               BWTS+MTFT+LZP         \
+    PACK+BWTS+MTFT+LZP    PACK+PACK+BWTS+MTFT+LZP \
+    PACK+PACK+PACK+BWTS+MTFT+LZP
 do
     printf "%9d kanzi -x64 -b 256m -t $trans -e TPAQX\n" $(kanzi -c -x64 -b 256m -t $trans -e TPAQX -j 1 -i "$ifile" -o stdout|wc -c)
 done
 
-# kanzi with blocksize 64 MiB and 4 transforms but only the 24 combinations with
-#   -t TEXT+{BWT,BWTS}+{MTFT,SRT}+{RLT,ZRLT} -e {CM,TPAQ,TPAQX}
+# kanzi with blocksize 64 MiB and 4 transforms but only the 48 combinations with
+#   -t TEXT+{BWT,BWTS}+{MTFT,SRT}+{RLT,ZRLT,LZP} -e {ANS1,CM,TPAQ,TPAQX}
 # testing NJOBS in parallel.  Useful for some highly repetitive text files.
 # The combinations without TEXT are included in the larger 3-transform loop further below.
 # Even if TEXT shrinks the output of the transform stage, it doesn't necessarily shrink the final output.  But worth trying.
 for t2 in BWT BWTS; do
     for t3 in MTFT SRT; do
-	for t4 in RLT ZRLT; do
-	    for e in CM TPAQ TPAQX; do
+	for t4 in RLT ZRLT LZP; do
+	    for e in ANS1 CM TPAQ TPAQX; do
 		echo -x64 -b 64m -t TEXT+$t2+$t3+$t4 -e $e
 	    done
 	done
@@ -169,28 +173,21 @@ trans_list="TEXT RLT PACK ZRLT BWTS BWT LZP MTFT SRT LZ LZX ROLZ ROLZX RANK EXE 
 # kanzi with two non-null transforms and one entropy coding, testing NJOBS in parallel, forcing blocksize 64 MiB
 for t1 in $trans_list; do
     for t2 in $trans_list; do
-	# Two identical transforms in a row isn't useful, skip that
-	if [ $t1 != $t2 ]; then
-	    for e in $entropy_list; do
-		echo -x64 -b 64m -t $t1+$t2 -e $e
-	    done
-	fi
+	# Two identical transforms in a row is sometimes useful, e.g. PACK+PACK, so include those too to be on the safe side
+	for e in $entropy_list; do
+	    echo -x64 -b 64m -t $t1+$t2 -e $e
+	done
     done
 done | parallel -j$NJOBS 'printf "%9d kanzi {=uq=}\n" $(kanzi -c -j 1 {=uq=} -i "$ifile" -o stdout|wc -c)'
 
 # kanzi with 3 non-null transforms and one entropy coding, testing NJOBS in parallel, forcing blocksize 64 MiB
 for t1 in $trans_list; do
     for t2 in $trans_list; do
-	# Two identical transforms in a row isn't useful, skip that
-	if [ $t1 != $t2 ]; then
-	    for t3 in $trans_list; do
-		# Two identical transforms in a row isn't useful, skip that
-		if [ $t2 != $t3 ]; then
-		    for e in $entropy_list; do
-			echo -x64 -b 64m -t $t1+$t2+$t3 -e $e
-		    done
-		fi
+	# Two identical transforms in a row is sometimes useful, e.g. PACK+PACK, so include those too to be on the safe side
+	for t3 in $trans_list; do
+	    for e in $entropy_list; do
+		echo -x64 -b 64m -t $t1+$t2+$t3 -e $e
 	    done
-	fi
+	done
     done
 done | parallel -j$NJOBS 'printf "%9d kanzi {=uq=}\n" $(kanzi -c -j 1 {=uq=} -i "$ifile" -o stdout|wc -c)'

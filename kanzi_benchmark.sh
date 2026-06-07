@@ -307,6 +307,8 @@ main() {
     local specialized_transforms=(
         "RLT"
         "PACK"
+        "PACK+PACK"
+        "PACK+PACK+PACK"
         "PACK+ZRLT+PACK"
         "PACK+RLT"
         "RLT+PACK"
@@ -335,6 +337,11 @@ main() {
         "BWTS+MTFT+RLT"
         "TEXT+BWT+MTFT+RLT"
         "BWT+MTFT+RLT"
+        "BWT+LZP"
+        "BWTS+MTFT+LZP"
+        "PACK+BWTS+MTFT+LZP"
+        "PACK+PACK+BWTS+MTFT+LZP"
+        "PACK+PACK+PACK+BWTS+MTFT+LZP"
     )
     
     for trans in "${specialized_transforms[@]}"; do
@@ -380,8 +387,8 @@ main() {
     local four_transform_tests=()
     for t2 in BWT BWTS; do
         for t3 in MTFT SRT; do
-            for t4 in RLT ZRLT; do
-                for e in CM TPAQ TPAQX; do
+            for t4 in RLT ZRLT LZP; do
+                for e in ANS1 CM TPAQ TPAQX; do
                     four_transform_tests+=("-x64 -b 64m -t TEXT+$t2+$t3+$t4 -e $e")
                 done
             done
@@ -421,11 +428,9 @@ main() {
 
         for t1 in $opt_trans_list; do
             for t2 in $opt_trans_list; do
-                if [[ "$t1" != "$t2" ]]; then
-                    for e in $entropy_list; do
-                        two_transform_tests+=("-x64 -b 64m -t $t1+$t2 -e $e")
-                    done
-                fi
+                for e in $entropy_list; do
+                    two_transform_tests+=("-x64 -b 64m -t $t1+$t2 -e $e")
+                done
             done
         done
 
@@ -440,15 +445,11 @@ main() {
 
         for t1 in $opt_trans_list; do
             for t2 in $opt_trans_list; do
-                if [[ "$t1" != "$t2" ]]; then
-                    for t3 in $opt_trans_list; do
-                        if [[ "$t2" != "$t3" ]]; then
-                            for e in $entropy_list; do
-                                three_transform_tests+=("-x64 -b 64m -t $t1+$t2+$t3 -e $e")
-                            done
-                        fi
+                for t3 in $opt_trans_list; do
+                    for e in $entropy_list; do
+                        three_transform_tests+=("-x64 -b 64m -t $t1+$t2+$t3 -e $e")
                     done
-                fi
+                done
             done
         done
 
