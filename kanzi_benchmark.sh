@@ -534,19 +534,24 @@ analyze_results() {
     # Additional insights
     printf "💡 **INSIGHTS:**\n"
     local total_tests=$(wc -l < "$RESULTS_FILE")
-    local fast_tests=$(awk -F'|' '$4 > 100' "$RESULTS_FILE" | wc -l)
-    local good_compression=$(awk -F'|' '$3 < 5' "$RESULTS_FILE" | wc -l)
+    local fast_tests=$(awk -F'|' '$4 > 100 && $1 > 0' "$RESULTS_FILE" | wc -l)
+    local good_compression=$(awk -F'|' '$3 < 5 && $1 > 0' "$RESULTS_FILE" | wc -l)
+    local fail_compression=$(awk -F'|' '$1 == 0' "$RESULTS_FILE" | wc -l)
     
     printf "   • Tested %d compression configurations\n" "$total_tests"
     printf "   • %d algorithms achieved >100 MB/s speed\n" "$fast_tests"
     printf "   • %d algorithms achieved <5%% compression ratio\n" "$good_compression"
-    
+
+    if (( fail_compression > 0 )); then
+        printf "   ❌️ %d algorithms failed with zero size output\n" "$fail_compression"
+    fi
+
     if (( $(echo "$best_ratio < 3" | bc -l) )); then
         printf "   • Excellent compression achieved (<%.0f%%)\n" 3
     elif (( $(echo "$best_ratio < 5" | bc -l) )); then
         printf "   • Very good compression achieved (<%.0f%%)\n" 5
     fi
-    
+
     if (( $(echo "$bal_speed > 50" | bc -l) )); then
         printf "   • Balanced option provides good speed (>50 MB/s)\n"
     fi
