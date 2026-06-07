@@ -474,9 +474,10 @@ analyze_results() {
         return 1
     fi
 
-    # Find convex hull of Pareto front in double-logarithmic space (from best to fastest compression)
+    # Find convex hull of Pareto front in double-logarithmic space (from best to fastest compression).
+    # Skip all lines where size is exactly 0 (happens if kanzi crashes, e.g. due to a bug in an encoder).
     local pareto_lines=$(sort -t\| -g -k1,1 -k2,2 "$RESULTS_FILE" | \
-                             perl -F'\|' -ane 'print log($F[0])," ",($F[1]==0 ? -9999 : log($F[1])),"|$_"' | \
+                             perl -F'\|' -ane 'next if $F[0] == 0;print log($F[0])," ",log($F[1]),"|$_"' | \
                              pareto-convex.pl | cut -d\| -f2-)
     local pareto_arr=()   # Array of Pareto lines, from best (element 0) to fastest (highest element)
     readarray -t pareto_arr <<< "$pareto_lines"
