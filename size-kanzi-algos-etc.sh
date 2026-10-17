@@ -1,5 +1,5 @@
 #! /bin/bash
-# Copyright 2024-2025 Ulrik Dickow <u.dickow@gmail.com>
+# Copyright 2024-2026 Ulrik Dickow <u.dickow@gmail.com>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -88,7 +88,7 @@ printf '%9d 7za a -m0=ppmd\n' \
 # 7za ppmd order 2 to 32 (entire valid range)(and force buffer size 64 MiB)
 for o in {2..32}; do
     printf "%9d 7za a -m0=ppmd:mem=26:o=$o\n" \
-	   $(t=`mktemp -u` && 7za a -m0=ppmd:mem=26:o=$o $t "$ifile" > /dev/null && wc -c < $t && rm $t)
+           $(t=`mktemp -u` && 7za a -m0=ppmd:mem=26:o=$o $t "$ifile" > /dev/null && wc -c < $t && rm $t)
 done
 
 # 7za ppmd order 14 with 256 MiB memory
@@ -150,11 +150,11 @@ done
 # Even if TEXT shrinks the output of the transform stage, it doesn't necessarily shrink the final output.  But worth trying.
 for t2 in BWT BWTS; do
     for t3 in MTFT SRT; do
-	for t4 in RLT ZRLT LZP; do
-	    for e in ANS1 CM TPAQ TPAQX; do
-		echo -x64 -b 64m -t TEXT+$t2+$t3+$t4 -e $e
-	    done
-	done
+        for t4 in RLT ZRLT LZP; do
+            for e in ANS1 CM TPAQ TPAQX; do
+                echo -x64 -b 64m -t TEXT+$t2+$t3+$t4 -e $e
+            done
+        done
     done
 done | parallel -j$NJOBS 'printf "%9d kanzi {=uq=}\n" $(kanzi -c -j 1 {=uq=} -i "$ifile" -o stdout|wc -c)'
 
@@ -164,7 +164,7 @@ trans_list="NONE PACK BWT BWTS LZ LZX LZP ROLZ ROLZX RLT ZRLT MTFT RANK SRT TEXT
 entropy_list="NONE HUFFMAN ANS0 ANS1 RANGE CM FPAQ TPAQ TPAQX"
 for t1 in $trans_list; do
     for e in $entropy_list; do
-	echo -x64 -b 64m -t $t1 -e $e
+        echo -x64 -b 64m -t $t1 -e $e
     done
 done | parallel -j$NJOBS 'printf "%9d kanzi {=uq=}\n" $(kanzi -c -j 1 {=uq=} -i "$ifile" -o stdout|wc -c)'
 
@@ -173,21 +173,29 @@ trans_list="TEXT RLT PACK ZRLT BWTS BWT LZP MTFT SRT LZ LZX ROLZ ROLZX RANK EXE 
 # kanzi with two non-null transforms and one entropy coding, testing NJOBS in parallel, forcing blocksize 64 MiB
 for t1 in $trans_list; do
     for t2 in $trans_list; do
-	# Two identical transforms in a row is sometimes useful, e.g. PACK+PACK, so include those too to be on the safe side
-	for e in $entropy_list; do
-	    echo -x64 -b 64m -t $t1+$t2 -e $e
-	done
+        # Two identical transforms in a row is sometimes useful, e.g. PACK+PACK, so include those too to be on the safe side
+        # except avoid BWTS+BWTS since that can cause a factor 200+ slowdown for some highly repetitive files!
+        if [[ !("$t1" == "BWTS" && "$t2" == "BWTS") ]]; then
+            for e in $entropy_list; do
+                echo -x64 -b 64m -t $t1+$t2 -e $e
+            done
+        fi
     done
 done | parallel -j$NJOBS 'printf "%9d kanzi {=uq=}\n" $(kanzi -c -j 1 {=uq=} -i "$ifile" -o stdout|wc -c)'
 
 # kanzi with 3 non-null transforms and one entropy coding, testing NJOBS in parallel, forcing blocksize 64 MiB
 for t1 in $trans_list; do
     for t2 in $trans_list; do
-	# Two identical transforms in a row is sometimes useful, e.g. PACK+PACK, so include those too to be on the safe side
-	for t3 in $trans_list; do
-	    for e in $entropy_list; do
-		echo -x64 -b 64m -t $t1+$t2+$t3 -e $e
-	    done
-	done
+        # Two identical transforms in a row is sometimes useful, e.g. PACK+PACK, so include those too to be on the safe side
+        # except avoid BWTS+BWTS since that can cause a factor 200+ slowdown for some highly repetitive files!
+        if [[ !("$t1" == "BWTS" && "$t2" == "BWTS") ]]; then
+            for t3 in $trans_list; do
+                if [[ !(("$t1" == "BWTS" || "$t2" == "BWTS") && "$t3" == "BWTS") ]]; then
+                    for e in $entropy_list; do
+                        echo -x64 -b 64m -t $t1+$t2+$t3 -e $e
+                    done
+                fi
+            done
+        fi
     done
 done | parallel -j$NJOBS 'printf "%9d kanzi {=uq=}\n" $(kanzi -c -j 1 {=uq=} -i "$ifile" -o stdout|wc -c)'

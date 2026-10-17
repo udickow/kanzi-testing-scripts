@@ -428,9 +428,11 @@ main() {
 
         for t1 in $opt_trans_list; do
             for t2 in $opt_trans_list; do
-                for e in $entropy_list; do
-                    two_transform_tests+=("-x64 -b 64m -t $t1+$t2 -e $e")
-                done
+                if [[ !("$t1" == "BWTS" && "$t2" == "BWTS") ]]; then
+                    for e in $entropy_list; do
+                        two_transform_tests+=("-x64 -b 64m -t $t1+$t2 -e $e")
+                    done
+                fi
             done
         done
 
@@ -445,11 +447,15 @@ main() {
 
         for t1 in $opt_trans_list; do
             for t2 in $opt_trans_list; do
-                for t3 in $opt_trans_list; do
-                    for e in $entropy_list; do
-                        three_transform_tests+=("-x64 -b 64m -t $t1+$t2+$t3 -e $e")
+                if [[ !("$t1" == "BWTS" && "$t2" == "BWTS") ]]; then
+                    for t3 in $opt_trans_list; do
+                        if [[ !(("$t1" == "BWTS" || "$t2" == "BWTS") && "$t3" == "BWTS") ]]; then
+                            for e in $entropy_list; do
+                                three_transform_tests+=("-x64 -b 64m -t $t1+$t2+$t3 -e $e")
+                            done
+                        fi
                     done
-                done
+                fi
             done
         done
 
