@@ -423,7 +423,7 @@ main() {
         printf "\n%s\n" "# KANZI Parallel Tests - Two Transform Combinations"
 
         # Two transform tests (optimized list)
-        local opt_trans_list="TEXT RLT PACK ZRLT BWTS BWT LZP MTFT SRT LZ LZX ROLZ ROLZX RANK EXE MM"
+        local opt_trans_list="TEXT RLT PACK ZRLT BWTS BWT LZP LZ LZX ROLZ ROLZX MTFT SRT RANK EXE MM"
         local two_transform_tests=()
 
         for t1 in $opt_trans_list; do

@@ -168,7 +168,7 @@ for t1 in $trans_list; do
     done
 done | parallel -j$NJOBS 'printf "%9d kanzi {=uq=}\n" $(kanzi -c -j 1 {=uq=} -i "$ifile" -o stdout|wc -c)'
 
-trans_list="TEXT RLT PACK ZRLT BWTS BWT LZP MTFT SRT LZ LZX ROLZ ROLZX RANK EXE MM"
+trans_list="TEXT RLT PACK ZRLT BWTS BWT LZP LZ LZX ROLZ ROLZX MTFT SRT RANK EXE MM"
 
 # kanzi with two non-null transforms and one entropy coding, testing NJOBS in parallel, forcing blocksize 64 MiB
 for t1 in $trans_list; do
