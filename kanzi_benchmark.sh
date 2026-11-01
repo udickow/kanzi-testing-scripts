@@ -318,10 +318,14 @@ main() {
         "TEXT+ZRLT+PACK"
         "RLT+LZP+PACK+RLT"
         "TEXT+ZRLT+PACK+LZP"
-	"ZRLT+TEXT+LZP"
-	"ZRLT+TEXT+LZPX"
-	"TEXT+LZP+PACK"
-	"TEXT+LZPX+PACK"
+        "ZRLT+TEXT+LZP"
+        "ZRLT+TEXT+LZPX"
+        "LZPX+ZRLT"
+        "TEXT+LZPX+ZRLT"
+        "TEXT+LZPX+PACK"
+        "TEXT+RLT+LZPX"
+        "TEXT+RLT+LZPX+PACK+RLT"
+        "TEXT+LZP+PACK"
         "TEXT+RLT+PACK"
         "TEXT+RLT+LZP"
         "TEXT+RLT+PACK+LZP"
@@ -411,7 +415,7 @@ main() {
 
         # Single transform tests
         local trans_list="NONE PACK BWT BWTS LZF LZ LZX LZP LZPX ROLZ ROLZX RLT ZRLT MTFT RANK SRT TEXT EXE MM UTF DNA"
-        local entropy_list="NONE HUFFMAN HUFFMAN1 ANS0 ANS1 RANGE CM FPAQ TPAQ TPAQX"
+        local entropy_list="NONE HUFFMAN HUFFMAN1 ANS0 ANS1 RANGE FPAQ CM TPAQ TPAQX"
         local single_transform_tests=()
 
         for t1 in $trans_list; do
