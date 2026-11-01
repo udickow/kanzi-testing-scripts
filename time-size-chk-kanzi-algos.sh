@@ -1,6 +1,6 @@
 #! /bin/bash
 # -*- indent-tabs-mode: nil; -*-
-# Copyright 2025 Ulrik Dickow <u.dickow@gmail.com>
+# Copyright 2025-2026 Ulrik Dickow <u.dickow@gmail.com>
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -61,14 +61,16 @@ do_test () {
     # As of kanzi 2.4.0 verbosity level 1 is default but specify explicitly anyway in case it changes later on
     clines=$("$KANZI" -c -x64 -v 1 -i "$infile" -f -o "$ctfile" "$@")
     if [ $? -eq 0 ]; then
-        # Parse output expected to contain a line like this:
+        # Parse output expected to contain a line like one of these, converting seconds to milliseconds:
         #   Compressed enwik7:  10000000 => 2106385 (21.06%) in 3061 ms
-        eval $(perl -lne '/=>\s*(\d+) .* (\d+) ms/ and print "csize=$1; ctime=$2"' <<<"$clines")
+        #   Compressed some..:  652000000 => 54154215 (8.31%) in 104.6 s
+        eval $(perl -lne '/=>\s*(\d+) .* ([\d.]+) (m?s)/ and print "csize=$1; ctime=".($3 eq "s" ? 1000*$2 : $2)' <<<"$clines")
         dlines=$("$KANZI" -d -v 1 -i "$ctfile" -f -o "$dtfile" "$@")
         if [ $? -eq 0 ]; then
-            # Parse output expected to contain a line like this:
+            # Parse output expected to contain a line like one of these, converting seconds to milliseconds:
             #   Decompressed tmp.Jkk5fQDZ2g.knz: 2106385 => 10000000 bytes in 3263 ms
-            eval $(perl -lne '/ in (\d+) ms/ and print "dtime=$1"' <<<"$dlines")
+            #   Decompressed tmp............: 11038665 => 1416769759 bytes in 159.2 s
+            eval $(perl -lne '/ in ([\d.]+) (m?s)/ and print "dtime=".($2 eq "s" ? 1000*$1 : $1)' <<<"$dlines")
             csumstr2=$("$HASHPROG" < "$dtfile")
             [ "X$csumstr1" = "X$csumstr2" ] && status="OK"
         fi
