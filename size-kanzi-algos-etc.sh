@@ -127,6 +127,9 @@ for trans in \
     RLT+PACK+LZP          RLT+PACK+LZP+RLT      \
     TEXT+ZRLT+PACK        RLT+LZP+PACK+RLT      \
     TEXT+ZRLT+PACK+LZP    TEXT+RLT+PACK         \
+    ZRLT+TEXT+LZP         ZRLT+TEXT+LZPX        \
+    LZPX+ZRLT             TEXT+LZPX+ZRLT        \
+    TEXT+LZP+PACK         TEXT+LZPX+PACK        \
     TEXT+RLT+LZP          TEXT+RLT+PACK+LZP     \
     TEXT+RLT+LZP+RLT      TEXT+RLT+PACK+LZP+RLT \
     TEXT+RLT+LZP+PACK     TEXT+RLT+PACK+RLT+LZP \
@@ -160,15 +163,15 @@ done | parallel -j$NJOBS 'printf "%9d kanzi {=uq=}\n" $(kanzi -c -j 1 {=uq=} -i 
 
 # kanzi with one transform (including NONE) and one entropy coding, testing NJOBS in parallel, forcing blocksize 64 MiB
 #   (for 2+ transforms we will drop the last 2 in trans_list and reorder the rest)
-trans_list="NONE PACK BWT BWTS LZ LZX LZP ROLZ ROLZX RLT ZRLT MTFT RANK SRT TEXT EXE MM UTF DNA"
-entropy_list="NONE HUFFMAN ANS0 ANS1 RANGE CM FPAQ TPAQ TPAQX"
+trans_list="NONE PACK BWT BWTS LZF LZ LZX LZP LZPX ROLZ ROLZX RLT ZRLT MTFT RANK SRT TEXT EXE MM UTF DNA"
+entropy_list="NONE HUFFMAN HUFFMAN1 ANS0 ANS1 RANGE CM FPAQ TPAQ TPAQX"
 for t1 in $trans_list; do
     for e in $entropy_list; do
         echo -x64 -b 64m -t $t1 -e $e
     done
 done | parallel -j$NJOBS 'printf "%9d kanzi {=uq=}\n" $(kanzi -c -j 1 {=uq=} -i "$ifile" -o stdout|wc -c)'
 
-trans_list="TEXT RLT PACK ZRLT BWTS BWT LZP LZ LZX ROLZ ROLZX MTFT SRT RANK EXE MM"
+trans_list="TEXT RLT PACK ZRLT BWTS BWT LZP LZPX LZF LZ LZX ROLZ ROLZX MTFT SRT RANK EXE MM"
 
 # kanzi with two non-null transforms and one entropy coding, testing NJOBS in parallel, forcing blocksize 64 MiB
 for t1 in $trans_list; do

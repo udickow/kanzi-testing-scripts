@@ -318,6 +318,10 @@ main() {
         "TEXT+ZRLT+PACK"
         "RLT+LZP+PACK+RLT"
         "TEXT+ZRLT+PACK+LZP"
+	"ZRLT+TEXT+LZP"
+	"ZRLT+TEXT+LZPX"
+	"TEXT+LZP+PACK"
+	"TEXT+LZPX+PACK"
         "TEXT+RLT+PACK"
         "TEXT+RLT+LZP"
         "TEXT+RLT+PACK+LZP"
@@ -406,8 +410,8 @@ main() {
         printf "\n%s\n" "# KANZI Parallel Tests - Single Transform + Entropy"
 
         # Single transform tests
-        local trans_list="NONE PACK BWT BWTS LZ LZX LZP ROLZ ROLZX RLT ZRLT MTFT RANK SRT TEXT EXE MM UTF DNA"
-        local entropy_list="NONE HUFFMAN ANS0 ANS1 RANGE CM FPAQ TPAQ TPAQX"
+        local trans_list="NONE PACK BWT BWTS LZF LZ LZX LZP LZPX ROLZ ROLZX RLT ZRLT MTFT RANK SRT TEXT EXE MM UTF DNA"
+        local entropy_list="NONE HUFFMAN HUFFMAN1 ANS0 ANS1 RANGE CM FPAQ TPAQ TPAQX"
         local single_transform_tests=()
 
         for t1 in $trans_list; do
@@ -423,7 +427,7 @@ main() {
         printf "\n%s\n" "# KANZI Parallel Tests - Two Transform Combinations"
 
         # Two transform tests (optimized list)
-        local opt_trans_list="TEXT RLT PACK ZRLT BWTS BWT LZP LZ LZX ROLZ ROLZX MTFT SRT RANK EXE MM"
+        local opt_trans_list="TEXT RLT PACK ZRLT BWTS BWT LZP LZPX LZF LZ LZX ROLZ ROLZX MTFT SRT RANK EXE MM"
         local two_transform_tests=()
 
         for t1 in $opt_trans_list; do

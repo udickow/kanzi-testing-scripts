@@ -79,9 +79,9 @@ do_test () {
     printf "%-4s %10d %7d %7d  |  -x64 %s\n" "$status" "$csize" "$ctime" "$dtime" "$single_string_args"
 }
 
-# All valid transforms and entropy codecs, respectively, as of kanzi 2.4.0 (but only test NONE-NONE once)
-trans_list="NONE PACK BWT BWTS LZ LZX LZP ROLZ ROLZX RLT ZRLT MTFT RANK SRT TEXT EXE MM UTF DNA"
-entropy_list="HUFFMAN ANS0 ANS1 RANGE CM FPAQ TPAQ TPAQX"
+# All valid transforms and entropy codecs, respectively, as of kanzi 2.4.0-2.6.0 -- plus new added after 2.6.0
+trans_list="NONE PACK BWT BWTS LZF LZ LZX LZP LZPX ROLZ ROLZX RLT ZRLT MTFT RANK SRT TEXT EXE MM UTF DNA"
+entropy_list="HUFFMAN HUFFMAN1 ANS0 ANS1 RANGE FPAQ CM TPAQ TPAQX"
 
 # Using default blocksize (4m as of 2.4.0) for the transform tests
 for t in $trans_list; do
